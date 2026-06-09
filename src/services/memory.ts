@@ -11,55 +11,55 @@ class MemoryService {
   private recordingTimers: Map<string, NodeJS.Timeout> = new Map();
 
   async getProcessList(): Promise<{ pid: number; name: string }[]> {
-    // Simulated process list - in real implementation, this would use Windows API
-    return [
-      { pid: 100, name: 'chrome.exe' },
-      { pid: 200, name: 'firefox.exe' },
-      { pid: 300, name: 'notepad.exe' },
-      { pid: 400, name: 'code.exe' },
-      { pid: 500, name: 'explorer.exe' },
-      { pid: 600, name: 'svchost.exe' },
-      { pid: 700, name: 'node.exe' },
-      { pid: 800, name: 'python.exe' },
-    ];
+    try {
+      const processes = await window.electronAPI.getProcesses();
+      return processes.map((p: any) => ({ pid: p.pid, name: p.name }));
+    } catch (error) {
+      console.error('Failed to get processes:', error);
+      return [];
+    }
   }
 
   async getProcessMemoryInfo(processId: number): Promise<ProcessMemoryInfo> {
-    // Simulated memory info - in real implementation, this would use Windows API
-    const processList = await this.getProcessList();
-    const process = processList.find((p) => p.pid === processId);
+    try {
+      const memoryData = await window.electronAPI.getProcessMemory(processId);
+      const processList = await this.getProcessList();
+      const process = processList.find((p) => p.pid === processId);
 
-    if (!process) {
-      throw new Error(`Process with PID ${processId} not found`);
+      if (!memoryData || !process) {
+        throw new Error(`Process with PID ${processId} not found`);
+      }
+
+      return {
+        processId,
+        processName: process.name,
+        workingSetSize: memoryData.workingSetSize,
+        privateWorkingSetSize: memoryData.privateWorkingSetSize,
+        commitSize: memoryData.commitSize,
+        timestamp: Date.now(),
+      };
+    } catch (error) {
+      throw error;
     }
-
-    const baseMemory = 100 * 1024 * 1024; // 100MB base
-    const randomFactor = Math.random() * 0.5 + 0.75; // 75% to 125%
-
-    return {
-      processId,
-      processName: process.name,
-      workingSetSize: Math.floor(baseMemory * randomFactor * 1.5),
-      privateWorkingSetSize: Math.floor(baseMemory * randomFactor),
-      commitSize: Math.floor(baseMemory * randomFactor * 2),
-      timestamp: Date.now(),
-    };
   }
 
   async getSystemMemoryInfo(): Promise<SystemMemoryInfo> {
-    // Simulated system memory info
-    const totalPhysical = 16 * 1024 * 1024 * 1024; // 16GB
-    const usedPercent = Math.random() * 0.4 + 0.3; // 30% to 70%
-    const availablePhysical = totalPhysical * (1 - usedPercent);
-
-    return {
-      totalPhysicalMemory: totalPhysical,
-      availablePhysicalMemory: Math.floor(availablePhysical),
-      totalVirtualMemory: totalPhysical * 2,
-      availableVirtualMemory: Math.floor(totalPhysical * 2 * (1 - usedPercent * 0.8)),
-      memoryLoad: Math.floor(usedPercent * 100),
-      timestamp: Date.now(),
-    };
+    try {
+      const sysInfo = await window.electronAPI.getSystemMemory();
+      if (!sysInfo) {
+        throw new Error('Failed to get system memory');
+      }
+      return {
+        totalPhysicalMemory: sysInfo.totalPhysicalMemory,
+        availablePhysicalMemory: sysInfo.availablePhysicalMemory,
+        totalVirtualMemory: sysInfo.totalPhysicalMemory * 2,
+        availableVirtualMemory: sysInfo.availablePhysicalMemory * 2,
+        memoryLoad: sysInfo.memoryLoad,
+        timestamp: Date.now(),
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   async startRecording(config: RecordingConfig): Promise<string> {
