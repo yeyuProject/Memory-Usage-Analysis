@@ -1,10 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { is } from '@electron-toolkit/utils';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { join } from 'path';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -16,7 +11,6 @@ function createWindow(): void {
     minHeight: 600,
     title: 'Memory Usage Analysis',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -28,11 +22,7 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
-  } else {
-    mainWindow.loadURL('http://localhost:5173');
-  }
+  mainWindow.loadURL('http://localhost:5173');
 }
 
 app.whenReady().then(() => {
