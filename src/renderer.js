@@ -48,6 +48,13 @@ const els = {
   exportPreview: $('exportPreview'),
 };
 
+// Memory estimation ratios (these are rough approximations; real values
+// would require per-process WMI queries for Private Bytes and Commit Size)
+const MEM_RATIOS = {
+  PRIVATE_RATIO: 0.7,   // Private working set ≈ 70% of working set
+  COMMIT_RATIO: 1.3,    // Commit size ≈ 130% of working set (includes paged)
+};
+
 let allProcesses = [];
 let selectedPid = null;
 let refreshTimer = null;
@@ -60,6 +67,11 @@ let notifyHistory = [];
 let isNotifying = false;
 let currentTab = 'dashboard';
 let systemCache = null;
+let sysUsedCache = 1;          // cached used-memory for percentage calculations
+let isRefreshing = false;     // reentrancy guard for refresh()
+let isDrawing = false;         // reentrancy guard for chart drawing
+let sortKey = 'memoryUsage';  // current sort column
+let sortDir = 'desc';         // 'asc' | 'desc'
 
 function formatBytes(b) {
   if (!b || b <= 0) return '0 B';
@@ -100,7 +112,7 @@ function drawBarChart(canvas, data) {
   const ctx = canvas.getContext('2d');
   clearCanvas(ctx);
   const w = canvas.width, h = canvas.height;
-  const padding = { top: 20, right: 60, bottom: 30, left: 120 };
+  const padding = { top: 20, right: 60, bottom: 40, left: 120 };
   drawAxes(ctx, w, h, padding.left);
 
   if (!data || data.length === 0) {
@@ -124,6 +136,16 @@ function drawBarChart(canvas, data) {
     ctx.textAlign = 'left'; ctx.fillStyle = '#666';
     ctx.fillText(formatShort(item.memoryUsage), padding.left + barW + 4, y + barH * 0.7);
   });
+
+  // X-axis tick labels (memory scale)
+  ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  for (let i = 0; i <= 4; i++) {
+    const x = padding.left + (i / 4) * (w - padding.left - padding.right);
+    const v = (i / 4) * max;
+    ctx.fillText(formatShort(v), x, h - padding.bottom + 14);
+  }
+  ctx.fillStyle = '#666'; ctx.font = '11px sans-serif';
+  ctx.fillText('内存 (bytes)', w / 2, h - 5);
 }
 
 function drawPieChart(canvas, data) {
@@ -168,7 +190,7 @@ function drawLineChart(canvas, series) {
   const ctx = canvas.getContext('2d');
   clearCanvas(ctx);
   const w = canvas.width, h = canvas.height;
-  const padding = { top: 30, right: 20, bottom: 30, left: 50 };
+  const padding = { top: 30, right: 60, bottom: 30, left: 50 };
   drawAxes(ctx, w, h, padding.left);
   if (!series || series.length === 0 || series[0].data.length === 0) {
     ctx.fillStyle = '#999'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
@@ -194,6 +216,23 @@ function drawLineChart(canvas, series) {
     });
     ctx.stroke();
   });
+
+  // Y-axis tick labels (memory scale)
+  ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = (i / 4) * max;
+    const y = h - padding.bottom - (i / 4) * (h - padding.top - padding.bottom);
+    ctx.fillText(formatShort(v), padding.left - 5, y + 3);
+    // gridline
+    ctx.strokeStyle = '#f0f0f0';
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(w - padding.right, y);
+    ctx.stroke();
+  }
+  redrawAxesLine(ctx, w, h, padding.left, padding.right);
+
+  // Legend
   ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
   series.forEach((s, idx) => {
     ctx.fillStyle = colors[idx % colors.length];
@@ -204,11 +243,27 @@ function drawLineChart(canvas, series) {
   });
 }
 
+function redrawAxesLine(ctx, w, h, left, right) {
+  ctx.strokeStyle = '#d9d9d9';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(left, 30);
+  ctx.lineTo(left, h - 30);
+  ctx.lineTo(w - right, h - 30);
+  ctx.stroke();
+}
+
 async function refresh() {
+  if (isRefreshing) return; // prevent reentrancy
+  isRefreshing = true;
   try {
     const [sys, procs] = await Promise.all([api.getSystemInfo(), api.getProcesses()]);
     allProcesses = procs || [];
     systemCache = sys;
+    // Cache used-memory for percentage calcs (avoids recomputing in every render)
+    sysUsedCache = (sys && sys.totalPhysicalMemory)
+      ? Math.max(sys.totalPhysicalMemory - sys.availablePhysicalMemory, 1)
+      : 1;
     renderSystem(sys);
     renderTable();
     renderDashCharts();
@@ -219,6 +274,8 @@ async function refresh() {
     setStatus(`已加载 ${allProcesses.length} 个进程`);
   } catch (e) {
     setStatus('错误: ' + e.message);
+  } finally {
+    isRefreshing = false;
   }
 }
 
@@ -250,25 +307,35 @@ function getFilteredProcesses() {
 }
 
 function renderTable() {
-  const matched = getFilteredProcesses();
+  let matched = getFilteredProcesses();
   if (matched.length === 0) {
     els.tbody.innerHTML = `<tr><td colspan="5" class="empty">${allProcesses.length === 0 ? '暂无数据' : '无匹配结果'}</td></tr>`;
     return;
   }
+  // Apply user-selected sort
+  matched.sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
   const slice = matched.slice(0, 200);
-  const sysUsed = (systemCache && systemCache.totalPhysicalMemory)
-    ? Math.max(systemCache.totalPhysicalMemory - systemCache.availablePhysicalMemory, 1)
-    : 1;
   els.tbody.innerHTML = slice.map(p => `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
     <td>${p.pid}</td>
     <td>${escapeHtml(p.name)}</td>
     <td>${formatBytes(p.memoryUsage)}</td>
-    <td>${((p.memoryUsage / sysUsed) * 100).toFixed(1)}%</td>
+    <td>${((p.memoryUsage / sysUsedCache) * 100).toFixed(1)}%</td>
     <td>${selectedPid === p.pid ? '<span style="color:#52c41a;font-weight:500">已选择</span>' : '<span style="color:#999">运行中</span>'}</td>
   </tr>`).join('');
   if (matched.length > 200) {
     els.tbody.insertAdjacentHTML('beforeend', `<tr><td colspan="5" class="empty">仅显示前200个，共 ${matched.length} 个匹配</td></tr>`);
   }
+  // Update sort indicators
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === sortKey) {
+      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
 }
 
 function renderDashCharts() {
@@ -287,9 +354,9 @@ function renderChartPage() {
   const proc = pid ? allProcesses.find(p => p.pid === pid) : null;
   const pieData = proc
     ? [
-        { name: '私有', value: Math.floor(proc.memoryUsage * 0.7) },
-        { name: '共享', value: Math.floor(proc.memoryUsage * 0.3) },
-        { name: '提交', value: Math.floor(proc.memoryUsage * 1.3) },
+        { name: '私有', value: Math.floor(proc.memoryUsage * MEM_RATIOS.PRIVATE_RATIO) },
+        { name: '共享', value: Math.floor(proc.memoryUsage * (1 - MEM_RATIOS.PRIVATE_RATIO)) },
+        { name: '提交', value: Math.floor(proc.memoryUsage * MEM_RATIOS.COMMIT_RATIO) },
       ]
     : allProcesses.slice(0, 5).map(p => ({ name: p.name, value: p.memoryUsage }));
   drawPieChart($('pieChart'), pieData);
@@ -315,8 +382,8 @@ function showDetail(pid) {
   if (!proc) { els.detailCard.style.display = 'none'; return; }
   selectedPid = pid;
   const ws = proc.memoryUsage;
-  const pws = Math.floor(ws * 0.7);
-  const commit = Math.floor(ws * 1.3);
+  const pws = Math.floor(ws * MEM_RATIOS.PRIVATE_RATIO);
+  const commit = Math.floor(ws * MEM_RATIOS.COMMIT_RATIO);
   const max = Math.max(ws, pws, commit);
   els.detailTitle.textContent = `${proc.name} (PID: ${pid})`;
   els.dWS.textContent = formatBytes(ws);
@@ -352,6 +419,11 @@ function startRecording() {
     showToast('所选进程已不存在', 'error');
     return;
   }
+  // Defensive: clear any leftover timer before starting a new one
+  if (activeRecordingTimer) {
+    clearInterval(activeRecordingTimer);
+    activeRecordingTimer = null;
+  }
   activeRecording = {
     id: 'rec_' + Date.now(),
     processId: selectedPid,
@@ -370,13 +442,15 @@ function startRecording() {
   activeRecordingTimer = setInterval(() => {
     const now = Date.now();
     if (now >= endTime) { stopRecording(); return; }
+    // Defensive: stopRecording may have nulled activeRecording already
+    if (!activeRecording) return;
     const p = allProcesses.find(x => x.pid === activeRecording.processId);
     if (!p) { stopRecording(); return; }
     activeRecording.data.push({
       timestamp: now,
       workingSetSize: p.memoryUsage,
-      privateWorkingSetSize: Math.floor(p.memoryUsage * 0.7),
-      commitSize: Math.floor(p.memoryUsage * 1.3),
+      privateWorkingSetSize: Math.floor(p.memoryUsage * MEM_RATIOS.PRIVATE_RATIO),
+      commitSize: Math.floor(p.memoryUsage * MEM_RATIOS.COMMIT_RATIO),
     });
     updateRecStatus();
   }, interval);
@@ -492,6 +566,7 @@ function checkNotifications() {
   notifyRules.forEach(rule => {
     const target = allProcesses.find(p => p.memoryUsage >= rule.threshold);
     if (target && !rule.triggered) {
+      // Trigger: process crossed the threshold (rising edge)
       rule.triggered = true;
       const entry = {
         id: 'notif_' + Date.now(),
@@ -503,7 +578,16 @@ function checkNotifications() {
       showToast(entry.text, 'warn');
       changed = true;
     } else if (!target && rule.triggered) {
+      // Recovery: process fell back below threshold (falling edge)
       rule.triggered = false;
+      const recoveryEntry = {
+        id: 'notif_' + Date.now(),
+        time: Date.now(),
+        text: `${rule.metric} 已回落至阈值以下 (阈值 ${formatBytes(rule.threshold)})`,
+      };
+      notifyHistory.unshift(recoveryEntry);
+      notifyHistory = notifyHistory.slice(0, 20);
+      showToast(recoveryEntry.text, 'info');
       changed = true;
     }
   });
@@ -573,6 +657,16 @@ function switchTab(name) {
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.go)));
+document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('click', () => {
+  const key = th.dataset.sort;
+  if (sortKey === key) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortKey = key;
+    sortDir = key === 'name' ? 'asc' : 'desc';
+  }
+  renderTable();
+}));
 
 els.refreshBtn.addEventListener('click', refresh);
 els.searchInput.addEventListener('input', renderTable);

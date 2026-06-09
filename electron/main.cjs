@@ -10,6 +10,12 @@ const path = require('path');
 
 const execAsync = promisify(exec);
 
+// Memory estimation ratios (must match renderer constants)
+const MEM_RATIOS = {
+  PRIVATE_RATIO: 0.7,
+  COMMIT_RATIO: 1.3,
+};
+
 let mainWindow = null;
 let processCache = [];
 let systemCache = null;
@@ -61,7 +67,8 @@ async function collectData() {
 
 function startCollector() {
   collectData();
-  refreshInterval = setInterval(collectData, 1500);
+  // 2s collection interval matches renderer's 2s refresh
+  refreshInterval = setInterval(collectData, 2000);
 }
 
 function stopCollector() {
@@ -91,12 +98,16 @@ function createWindow() {
 ipcMain.handle('get-processes', () => processCache);
 ipcMain.handle('get-system-info', () => systemCache);
 ipcMain.handle('get-process-memory', (_e, pid) => {
+  // Defensive: reject invalid pids before they cause a crash
+  if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
+    return null;
+  }
   const p = processCache.find(x => x.pid === pid);
   if (!p) return null;
   return {
     workingSetSize: p.memoryUsage,
-    privateWorkingSetSize: Math.floor(p.memoryUsage * 0.7),
-    commitSize: Math.floor(p.memoryUsage * 1.3),
+    privateWorkingSetSize: Math.floor(p.memoryUsage * MEM_RATIOS.PRIVATE_RATIO),
+    commitSize: Math.floor(p.memoryUsage * MEM_RATIOS.COMMIT_RATIO),
     timestamp: Date.now(),
   };
 });

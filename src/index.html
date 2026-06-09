@@ -70,7 +70,13 @@
           <div class="card-body">
             <table>
               <thead>
-                <tr><th style="width:80px">PID</th><th>进程名称</th><th style="width:130px">内存占用</th><th style="width:110px" title="该进程内存占系统已用物理内存的百分比">占已用%</th><th style="width:100px">状态</th></tr>
+                <tr>
+                  <th class="sortable" data-sort="pid" style="width:80px">PID <span class="sort-ind"></span></th>
+                  <th class="sortable" data-sort="name">进程名称 <span class="sort-ind"></span></th>
+                  <th class="sortable" data-sort="memoryUsage" style="width:130px">内存占用 <span class="sort-ind"></span></th>
+                  <th style="width:110px" title="该进程内存占系统已用物理内存的百分比">占已用%</th>
+                  <th style="width:100px">状态</th>
+                </tr>
               </thead>
               <tbody id="processTbody"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
             </table>
