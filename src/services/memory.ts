@@ -10,10 +10,18 @@ class MemoryService {
   private recordingSessions: Map<string, RecordingSession> = new Map();
   private recordingTimers: Map<string, NodeJS.Timeout> = new Map();
 
+  private isElectron(): boolean {
+    return typeof window !== 'undefined' && window.electronAPI !== undefined;
+  }
+
   async getProcessList(): Promise<{ pid: number; name: string }[]> {
     try {
-      const processes = await window.electronAPI.getProcesses();
-      return processes.map((p: any) => ({ pid: p.pid, name: p.name }));
+      if (this.isElectron()) {
+        const processes = await window.electronAPI.getProcesses();
+        return processes.map((p: any) => ({ pid: p.pid, name: p.name }));
+      }
+      // Browser fallback - return empty, will be handled by UI
+      return [];
     } catch (error) {
       console.error('Failed to get processes:', error);
       return [];
@@ -22,22 +30,25 @@ class MemoryService {
 
   async getProcessMemoryInfo(processId: number): Promise<ProcessMemoryInfo> {
     try {
-      const memoryData = await window.electronAPI.getProcessMemory(processId);
-      const processList = await this.getProcessList();
-      const process = processList.find((p) => p.pid === processId);
+      if (this.isElectron()) {
+        const memoryData = await window.electronAPI.getProcessMemory(processId);
+        const processList = await this.getProcessList();
+        const process = processList.find((p) => p.pid === processId);
 
-      if (!memoryData || !process) {
-        throw new Error(`Process with PID ${processId} not found`);
+        if (!memoryData || !process) {
+          throw new Error(`Process with PID ${processId} not found`);
+        }
+
+        return {
+          processId,
+          processName: process.name,
+          workingSetSize: memoryData.workingSetSize,
+          privateWorkingSetSize: memoryData.privateWorkingSetSize,
+          commitSize: memoryData.commitSize,
+          timestamp: Date.now(),
+        };
       }
-
-      return {
-        processId,
-        processName: process.name,
-        workingSetSize: memoryData.workingSetSize,
-        privateWorkingSetSize: memoryData.privateWorkingSetSize,
-        commitSize: memoryData.commitSize,
-        timestamp: Date.now(),
-      };
+      throw new Error('Electron API not available');
     } catch (error) {
       throw error;
     }
@@ -45,18 +56,21 @@ class MemoryService {
 
   async getSystemMemoryInfo(): Promise<SystemMemoryInfo> {
     try {
-      const sysInfo = await window.electronAPI.getSystemMemory();
-      if (!sysInfo) {
-        throw new Error('Failed to get system memory');
+      if (this.isElectron()) {
+        const sysInfo = await window.electronAPI.getSystemMemory();
+        if (!sysInfo) {
+          throw new Error('Failed to get system memory');
+        }
+        return {
+          totalPhysicalMemory: sysInfo.totalPhysicalMemory,
+          availablePhysicalMemory: sysInfo.availablePhysicalMemory,
+          totalVirtualMemory: sysInfo.totalPhysicalMemory * 2,
+          availableVirtualMemory: sysInfo.availablePhysicalMemory * 2,
+          memoryLoad: sysInfo.memoryLoad,
+          timestamp: Date.now(),
+        };
       }
-      return {
-        totalPhysicalMemory: sysInfo.totalPhysicalMemory,
-        availablePhysicalMemory: sysInfo.availablePhysicalMemory,
-        totalVirtualMemory: sysInfo.totalPhysicalMemory * 2,
-        availableVirtualMemory: sysInfo.availablePhysicalMemory * 2,
-        memoryLoad: sysInfo.memoryLoad,
-        timestamp: Date.now(),
-      };
+      throw new Error('Electron API not available');
     } catch (error) {
       throw error;
     }
