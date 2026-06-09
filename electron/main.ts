@@ -81,7 +81,7 @@ function createWindow(): void {
     minHeight: 600,
     title: 'Memory Usage Analysis',
     webPreferences: {
-      preload: join(__dirname, 'preload.js'),
+      preload: join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
     },
