@@ -67,7 +67,8 @@ let notifyHistory = [];
 let isNotifying = false;
 let currentTab = 'dashboard';
 let systemCache = null;
-let sysUsedCache = 1;          // cached used-memory for percentage calculations
+let sysUsedCache = 1;          // cached used-memory (kept for potential reuse)
+let sysTotalCache = 1;         // cached total-memory for percentage calculations
 let isRefreshing = false;     // reentrancy guard for refresh()
 let isDrawing = false;         // reentrancy guard for chart drawing
 let sortKey = 'memoryUsage';  // current sort column
@@ -260,7 +261,8 @@ async function refresh() {
     const [sys, procs] = await Promise.all([api.getSystemInfo(), api.getProcesses()]);
     allProcesses = procs || [];
     systemCache = sys;
-    // Cache used-memory for percentage calcs (avoids recomputing in every render)
+    // Cache total-memory for percentage calcs (avoids recomputing in every render)
+    sysTotalCache = (sys && sys.totalPhysicalMemory) ? sys.totalPhysicalMemory : 1;
     sysUsedCache = (sys && sys.totalPhysicalMemory)
       ? Math.max(sys.totalPhysicalMemory - sys.availablePhysicalMemory, 1)
       : 1;
@@ -323,7 +325,7 @@ function renderTable() {
     <td>${p.pid}</td>
     <td>${escapeHtml(p.name)}</td>
     <td>${formatBytes(p.memoryUsage)}</td>
-    <td>${((p.memoryUsage / sysUsedCache) * 100).toFixed(1)}%</td>
+    <td>${((p.memoryUsage / sysTotalCache) * 100).toFixed(2)}%</td>
     <td>${selectedPid === p.pid ? '<span style="color:#52c41a;font-weight:500">已选择</span>' : '<span style="color:#999">运行中</span>'}</td>
   </tr>`).join('');
   if (matched.length > 200) {
