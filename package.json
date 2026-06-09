@@ -36,7 +36,8 @@
     "@electron-toolkit/utils": "^4.0.0",
     "antd": "^6.4.3",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "recharts": "^3.8.1"
   },
   "build": {
     "appId": "com.memory-analysis.app",

@@ -1,13 +1,25 @@
 import { useState } from 'react';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, Row, Col } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import AppLayout from './components/Layout';
+import ProcessList from './components/ProcessList';
+import RealtimeMonitor from './components/RealtimeMonitor';
+import DataRecording from './components/DataRecording';
+import MemoryPieChart from './components/charts/PieChart';
+import { useProcessMemory } from './hooks/useMemory';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
+  const [selectedPid, setSelectedPid] = useState<number | null>(null);
+
+  const { memoryInfo } = useProcessMemory(selectedPid);
 
   const handleMenuSelect = (key: string) => {
     setCurrentPage(key);
+  };
+
+  const handleProcessSelect = (process: { pid: number; name: string }) => {
+    setSelectedPid(process.pid);
   };
 
   const renderContent = () => {
@@ -17,22 +29,25 @@ function App() {
           <div>
             <h2>仪表盘</h2>
             <p>欢迎使用Windows内存占用分析工具</p>
+            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+              <Col span={24}>
+                <ProcessList onSelect={handleProcessSelect} selectedPid={selectedPid} />
+              </Col>
+              {selectedPid && (
+                <Col span={24}>
+                  <MemoryPieChart
+                    data={memoryInfo}
+                    title={`进程 ${selectedPid} 内存分布`}
+                  />
+                </Col>
+              )}
+            </Row>
           </div>
         );
       case 'monitor':
-        return (
-          <div>
-            <h2>实时监控</h2>
-            <p>实时监控内存使用情况</p>
-          </div>
-        );
+        return <RealtimeMonitor processId={selectedPid} />;
       case 'recording':
-        return (
-          <div>
-            <h2>数据录制</h2>
-            <p>录制内存使用数据</p>
-          </div>
-        );
+        return <DataRecording processId={selectedPid} />;
       case 'report':
         return (
           <div>
