@@ -256,12 +256,14 @@ function renderTable() {
     return;
   }
   const slice = matched.slice(0, 200);
-  const max = slice[0]?.memoryUsage || 1;
+  const sysUsed = (systemCache && systemCache.totalPhysicalMemory)
+    ? Math.max(systemCache.totalPhysicalMemory - systemCache.availablePhysicalMemory, 1)
+    : 1;
   els.tbody.innerHTML = slice.map(p => `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
     <td>${p.pid}</td>
     <td>${escapeHtml(p.name)}</td>
     <td>${formatBytes(p.memoryUsage)}</td>
-    <td>${((p.memoryUsage / max) * 100).toFixed(0)}%</td>
+    <td>${((p.memoryUsage / sysUsed) * 100).toFixed(1)}%</td>
     <td>${selectedPid === p.pid ? '<span style="color:#52c41a;font-weight:500">已选择</span>' : '<span style="color:#999">运行中</span>'}</td>
   </tr>`).join('');
   if (matched.length > 200) {
