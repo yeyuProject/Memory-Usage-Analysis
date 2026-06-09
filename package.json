@@ -1,0 +1,66 @@
+{
+  "name": "memory-usage-analysis",
+  "version": "1.0.0",
+  "description": "Windows程序内存占用分析工具",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:dev": "vite --config vite.electron.config.ts",
+    "electron:build": "vite build --config vite.electron.config.ts && electron-builder",
+    "test": "jest"
+  },
+  "keywords": [
+    "memory",
+    "analysis",
+    "windows",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^41.7.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^6.0.3",
+    "vite": "^6.4.3",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.2.5",
+    "@electron-toolkit/utils": "^4.0.0",
+    "antd": "^6.4.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "build": {
+    "appId": "com.memory-analysis.app",
+    "productName": "Memory Usage Analysis",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    }
+  }
+}
