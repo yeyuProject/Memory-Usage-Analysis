@@ -10,27 +10,21 @@ let mainWindow: BrowserWindow | null = null;
 async function getWindowsProcesses(): Promise<{ pid: number; name: string; memoryUsage: number }[]> {
   try {
     const { stdout } = await execAsync(
-      'wmic process get ProcessId,Name,WorkingSetSize /format:csv',
-      { encoding: 'utf-8', maxBuffer: 1024 * 1024 }
+      'powershell -Command "Get-Process | Select-Object Id, ProcessName, WorkingSet64 | ConvertTo-Json"',
+      { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
     );
 
-    const lines = stdout.trim().split('\n').filter(line => line.trim());
-    const processes: { pid: number; name: string; memoryUsage: number }[] = [];
+    let data = JSON.parse(stdout);
+    if (!Array.isArray(data)) data = [data];
 
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].split(',');
-      if (parts.length >= 4) {
-        const pid = parseInt(parts[1]);
-        const name = parts[2];
-        const memory = parseInt(parts[3]) || 0;
-
-        if (!isNaN(pid) && name) {
-          processes.push({ pid, name: name.trim(), memoryUsage: memory });
-        }
-      }
-    }
-
-    return processes.sort((a, b) => b.memoryUsage - a.memoryUsage);
+    return data
+      .filter((p: any) => p.Id > 0)
+      .map((p: any) => ({
+        pid: p.Id,
+        name: p.ProcessName,
+        memoryUsage: p.WorkingSet64 || 0,
+      }))
+      .sort((a: any, b: any) => b.memoryUsage - a.memoryUsage);
   } catch (error) {
     console.error('Failed to get processes:', error);
     return [];
@@ -40,22 +34,16 @@ async function getWindowsProcesses(): Promise<{ pid: number; name: string; memor
 async function getProcessMemoryInfo(processId: number) {
   try {
     const { stdout } = await execAsync(
-      `wmic process where ProcessId=${processId} get WorkingSetSize,PrivatePageCount,PageFileUsage /format:csv`,
+      `powershell -Command "Get-Process -Id ${processId} | Select-Object WorkingSet64, PrivateMemorySize64, PageFileUsage64 | ConvertTo-Json"`,
       { encoding: 'utf-8' }
     );
 
-    const lines = stdout.trim().split('\n').filter(line => line.trim());
-    if (lines.length >= 2) {
-      const parts = lines[1].split(',');
-      if (parts.length >= 4) {
-        return {
-          workingSetSize: parseInt(parts[3]) || 0,
-          privateWorkingSetSize: parseInt(parts[2]) || 0,
-          commitSize: parseInt(parts[1]) || 0,
-        };
-      }
-    }
-    return null;
+    const data = JSON.parse(stdout);
+    return {
+      workingSetSize: data.WorkingSet64 || 0,
+      privateWorkingSetSize: data.PrivateMemorySize64 || 0,
+      commitSize: (data.PageFileUsage64 || 0) * 1024,
+    };
   } catch (error) {
     console.error('Failed to get process memory:', error);
     return null;
@@ -65,24 +53,18 @@ async function getProcessMemoryInfo(processId: number) {
 async function getSystemMemoryInfo() {
   try {
     const { stdout } = await execAsync(
-      'wmic OS get TotalVisibleMemorySize,FreePhysicalMemory /format:csv',
+      'powershell -Command "$os = Get-CimInstance Win32_OperatingSystem; @{Total=[long]$os.TotalVisibleMemorySize*1024; Free=[long]$os.FreePhysicalMemory*1024} | ConvertTo-Json"',
       { encoding: 'utf-8' }
     );
 
-    const lines = stdout.trim().split('\n').filter(line => line.trim());
-    if (lines.length >= 2) {
-      const parts = lines[1].split(',');
-      if (parts.length >= 3) {
-        const total = parseInt(parts[2]) * 1024;
-        const free = parseInt(parts[1]) * 1024;
-        return {
-          totalPhysicalMemory: total,
-          availablePhysicalMemory: free,
-          memoryLoad: Math.round(((total - free) / total) * 100),
-        };
-      }
-    }
-    return null;
+    const data = JSON.parse(stdout);
+    const total = data.Total;
+    const free = data.Free;
+    return {
+      totalPhysicalMemory: total,
+      availablePhysicalMemory: free,
+      memoryLoad: Math.round(((total - free) / total) * 100),
+    };
   } catch (error) {
     console.error('Failed to get system memory:', error);
     return null;
