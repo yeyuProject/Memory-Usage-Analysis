@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>Memory Usage Analysis</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="logo">MUA</span>
+        <h1>Memory Usage Analysis</h1>
+      </div>
+      <div class="header-info">
+        <span id="lastUpdate">就绪</span>
+        <span class="version">v1.0.0</span>
+      </div>
+    </header>
+
+    <section class="system-info">
+      <div class="info-card"><div class="label">总内存</div><div class="value" id="totalMem">--</div></div>
+      <div class="info-card"><div class="label">可用内存</div><div class="value" id="freeMem">--</div></div>
+      <div class="info-card"><div class="label">使用率</div><div class="value" id="memLoad">--%</div></div>
+      <div class="info-card"><div class="label">进程数</div><div class="value" id="procCount">--</div></div>
+    </section>
+
+    <main>
+      <div class="card">
+        <div class="card-header">
+          <h2>进程列表</h2>
+          <div class="actions">
+            <input type="text" id="searchInput" placeholder="搜索进程名或PID" />
+            <button id="refreshBtn">刷新</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:80px">PID</th>
+                <th>进程名称</th>
+                <th style="width:130px">内存占用</th>
+                <th style="width:100px">占比</th>
+                <th style="width:100px">状态</th>
+              </tr>
+            </thead>
+            <tbody id="processTbody">
+              <tr><td colspan="5" class="empty">加载中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="detailCard" style="display:none">
+        <div class="card-header"><h2>进程详情 - <span id="detailTitle"></span></h2></div>
+        <div class="card-body">
+          <div class="detail-row">
+            <span class="label">工作集 (Working Set)</span>
+            <span class="value" id="dWS">--</span>
+          </div>
+          <div class="bar"><div class="bar-fill" id="bWS"></div></div>
+          <div class="detail-row">
+            <span class="label">私有工作集 (Private)</span>
+            <span class="value" id="dPWS">--</span>
+          </div>
+          <div class="bar"><div class="bar-fill green" id="bPWS"></div></div>
+          <div class="detail-row">
+            <span class="label">提交大小 (Commit)</span>
+            <span class="value" id="dCommit">--</span>
+          </div>
+          <div class="bar"><div class="bar-fill orange" id="bCommit"></div></div>
+        </div>
+      </div>
+    </main>
+
+    <footer><span id="status">就绪</span></footer>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
