@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
 
 const execAsync = promisify(exec);
+const __dirname = import.meta.dirname;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -79,6 +81,7 @@ function createWindow(): void {
     minHeight: 600,
     title: 'Memory Usage Analysis',
     webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
