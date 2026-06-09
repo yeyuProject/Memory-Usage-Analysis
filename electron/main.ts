@@ -2,10 +2,9 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
-import { is } from '@electron-toolkit/utils';
 
 const execAsync = promisify(exec);
-const __dirname = import.meta.dirname;
+const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -93,7 +92,7 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
     mainWindow.loadURL('http://localhost:5173');
