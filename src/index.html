@@ -18,6 +18,16 @@
       </div>
     </header>
 
+    <nav class="tabs">
+      <button class="tab active" data-tab="dashboard">仪表盘</button>
+      <button class="tab" data-tab="processes">进程</button>
+      <button class="tab" data-tab="charts">图表</button>
+      <button class="tab" data-tab="recording">录制</button>
+      <button class="tab" data-tab="filter">筛选</button>
+      <button class="tab" data-tab="notification">通知</button>
+      <button class="tab" data-tab="report">导出</button>
+    </nav>
+
     <section class="system-info">
       <div class="info-card"><div class="label">总内存</div><div class="value" id="totalMem">--</div></div>
       <div class="info-card"><div class="label">可用内存</div><div class="value" id="freeMem">--</div></div>
@@ -26,56 +36,179 @@
     </section>
 
     <main>
-      <div class="card">
-        <div class="card-header">
-          <h2>进程列表</h2>
-          <div class="actions">
-            <input type="text" id="searchInput" placeholder="搜索进程名或PID" />
-            <button id="refreshBtn">刷新</button>
+      <div class="tab-pane active" data-pane="dashboard">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><h2>Top 10 内存占用</h2></div>
+            <div class="card-body"><canvas id="dashBarChart" width="600" height="320"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h2>系统内存概览</h2></div>
+            <div class="card-body"><canvas id="dashPieChart" width="600" height="320"></canvas></div>
           </div>
         </div>
-        <div class="card-body">
-          <table>
-            <thead>
-              <tr>
-                <th style="width:80px">PID</th>
-                <th>进程名称</th>
-                <th style="width:130px">内存占用</th>
-                <th style="width:100px">占比</th>
-                <th style="width:100px">状态</th>
-              </tr>
-            </thead>
-            <tbody id="processTbody">
-              <tr><td colspan="5" class="empty">加载中...</td></tr>
-            </tbody>
-          </table>
+        <div class="card">
+          <div class="card-header"><h2>快捷操作</h2></div>
+          <div class="card-body">
+            <button class="btn btn-primary" data-go="processes">查看所有进程</button>
+            <button class="btn btn-primary" data-go="charts">查看图表</button>
+            <button class="btn btn-primary" data-go="recording">开始录制</button>
+            <button class="btn btn-primary" data-go="report">导出报告</button>
+          </div>
         </div>
       </div>
 
-      <div class="card" id="detailCard" style="display:none">
-        <div class="card-header"><h2>进程详情 - <span id="detailTitle"></span></h2></div>
-        <div class="card-body">
-          <div class="detail-row">
-            <span class="label">工作集 (Working Set)</span>
-            <span class="value" id="dWS">--</span>
+      <div class="tab-pane" data-pane="processes">
+        <div class="card">
+          <div class="card-header">
+            <h2>进程列表</h2>
+            <div class="actions">
+              <input type="text" id="searchInput" placeholder="搜索进程名或PID" />
+              <button id="refreshBtn">刷新</button>
+            </div>
           </div>
-          <div class="bar"><div class="bar-fill" id="bWS"></div></div>
-          <div class="detail-row">
-            <span class="label">私有工作集 (Private)</span>
-            <span class="value" id="dPWS">--</span>
+          <div class="card-body">
+            <table>
+              <thead>
+                <tr><th style="width:80px">PID</th><th>进程名称</th><th style="width:130px">内存占用</th><th style="width:100px">占比</th><th style="width:100px">状态</th></tr>
+              </thead>
+              <tbody id="processTbody"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+            </table>
           </div>
-          <div class="bar"><div class="bar-fill green" id="bPWS"></div></div>
-          <div class="detail-row">
-            <span class="label">提交大小 (Commit)</span>
-            <span class="value" id="dCommit">--</span>
+        </div>
+        <div class="card" id="detailCard" style="display:none">
+          <div class="card-header"><h2>进程详情 - <span id="detailTitle"></span></h2></div>
+          <div class="card-body">
+            <div class="detail-row"><span class="label">工作集 (Working Set)</span><span class="value" id="dWS">--</span></div>
+            <div class="bar"><div class="bar-fill" id="bWS"></div></div>
+            <div class="detail-row"><span class="label">私有工作集 (Private)</span><span class="value" id="dPWS">--</span></div>
+            <div class="bar"><div class="bar-fill green" id="bPWS"></div></div>
+            <div class="detail-row"><span class="label">提交大小 (Commit)</span><span class="value" id="dCommit">--</span></div>
+            <div class="bar"><div class="bar-fill orange" id="bCommit"></div></div>
           </div>
-          <div class="bar"><div class="bar-fill orange" id="bCommit"></div></div>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="charts">
+        <div class="card">
+          <div class="card-header">
+            <h2>内存图表分析</h2>
+            <div class="actions">
+              <select id="chartProcess"><option value="">-- 选择进程查看趋势 --</option></select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="grid-3">
+              <div class="chart-box"><h3>饼图 - 内存构成</h3><canvas id="pieChart" width="360" height="320"></canvas></div>
+              <div class="chart-box"><h3>折线图 - 历史趋势</h3><canvas id="lineChart" width="360" height="320"></canvas></div>
+              <div class="chart-box"><h3>柱状图 - 进程对比</h3><canvas id="barChart" width="360" height="320"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="recording">
+        <div class="card">
+          <div class="card-header">
+            <h2>数据录制</h2>
+            <div class="actions">
+              <input type="number" id="recInterval" value="1000" min="500" max="10000" style="width:80px" title="间隔ms" />
+              <input type="number" id="recDuration" value="60" min="5" max="600" style="width:60px" title="时长秒" />
+              <button id="recStart" class="btn btn-primary">开始录制</button>
+              <button id="recStop" class="btn btn-danger" disabled>停止</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="recStatus" class="empty">未在录制</div>
+            <table>
+              <thead><tr><th>会话ID</th><th>开始时间</th><th>数据点</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="recTbody"><tr><td colspan="5" class="empty">暂无录制</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="filter">
+        <div class="card">
+          <div class="card-header"><h2>数据筛选</h2></div>
+          <div class="card-body">
+            <div class="form-row">
+              <label>选择进程(可多选):</label>
+              <select id="filterProcess" multiple size="6" style="flex:1"></select>
+            </div>
+            <div class="form-row">
+              <label>指标:</label>
+              <label><input type="checkbox" class="metric-cb" value="workingSetSize" checked /> 工作集</label>
+              <label><input type="checkbox" class="metric-cb" value="privateWorkingSetSize" checked /> 私有工作集</label>
+              <label><input type="checkbox" class="metric-cb" value="commitSize" checked /> 提交大小</label>
+            </div>
+            <div class="form-row">
+              <label>内存范围(MB):</label>
+              <input type="number" id="minMem" placeholder="最小" style="width:100px" />
+              <span>-</span>
+              <input type="number" id="maxMem" placeholder="最大" style="width:100px" />
+            </div>
+            <div class="form-row">
+              <button id="filterApply" class="btn btn-primary">应用筛选</button>
+              <button id="filterClear" class="btn">清除</button>
+              <span id="filterCount" style="margin-left:12px;color:#666"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="notification">
+        <div class="card">
+          <div class="card-header">
+            <h2>通知规则</h2>
+            <div class="actions">
+              <label><input type="checkbox" id="notifyEnabled" checked /> 启用通知</label>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <label>指标:</label>
+              <select id="ruleMetric">
+                <option value="workingSetSize">工作集</option>
+                <option value="privateWorkingSetSize">私有工作集</option>
+                <option value="commitSize">提交大小</option>
+              </select>
+              <label>阈值(MB):</label>
+              <input type="number" id="ruleThreshold" placeholder="MB" style="width:100px" />
+              <button id="ruleAdd" class="btn btn-primary">添加规则</button>
+            </div>
+            <table>
+              <thead><tr><th>指标</th><th>阈值</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="ruleTbody"><tr><td colspan="4" class="empty">暂无规则</td></tr></tbody>
+            </table>
+            <h3 style="margin-top:16px">通知历史</h3>
+            <div id="historyList" class="empty">无通知历史</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane" data-pane="report">
+        <div class="card">
+          <div class="card-header"><h2>报告导出</h2></div>
+          <div class="card-body">
+            <div class="form-row">
+              <label>格式:</label>
+              <select id="exportFormat">
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="html">HTML</option>
+              </select>
+              <label><input type="checkbox" id="exportAll" checked /> 包含所有进程</label>
+              <button id="exportBtn" class="btn btn-primary">导出报告</button>
+            </div>
+            <div id="exportPreview" class="empty" style="margin-top:12px">点击"导出报告"生成文件</div>
+          </div>
         </div>
       </div>
     </main>
 
     <footer><span id="status">就绪</span></footer>
-
+    <div id="toast" class="toast"></div>
     <script src="renderer.js"></script>
   </body>
 </html>
