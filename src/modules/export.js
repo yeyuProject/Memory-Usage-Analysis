@@ -11,6 +11,14 @@ const { el, escapeHtml, formatBytes, showToast, setStatus } = require('./utils')
 const processTable = require('./process-table');
 const { COLORS } = require('./theme');
 
+// Memory estimation ratios — approximate private working set and commit
+// size from working set, since PowerShell only exposes the working set
+// via Get-Process. MUST stay in sync with MEM_RATIOS in electron/main.cjs.
+const MEM_RATIOS = {
+  PRIVATE_RATIO: 0.7,
+  COMMIT_RATIO: 1.3,
+};
+
 /**
  * Build CSV content from the given process list.
  */
@@ -21,8 +29,8 @@ function toCsv(data) {
       p.pid,
       p.name,
       p.memoryUsage,
-      Math.floor(p.memoryUsage * 0.7),
-      Math.floor(p.memoryUsage * 1.3),
+      Math.floor(p.memoryUsage * MEM_RATIOS.PRIVATE_RATIO),
+      Math.floor(p.memoryUsage * MEM_RATIOS.COMMIT_RATIO),
       Date.now(),
     ].join(','));
   });
