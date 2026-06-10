@@ -17,6 +17,7 @@
 const state = require('./state');
 const { el, escapeHtml, formatBytes } = require('./utils');
 const { compileSearchMatcher, getHighlightRe, highlight } = require('./search');
+const { COLORS } = require('./theme');
 
 // ===== Thresholds (loaded from config; defaults here) =====
 const SPIKE_THRESHOLD_DEFAULT = 50;
@@ -33,19 +34,6 @@ let LEAK_THRESHOLD  = LEAK_THRESHOLD_DEFAULT;
 // Display limits
 const PROCESS_TABLE_LIMIT = 200;
 const DASHBOARD_LIMIT = 10;
-
-// Theme colors
-const COLORS = {
-  SPIKE_HOT:  '#ff4d4f',
-  SPIKE_WARM: '#faad14',
-  SPIKE_COOL: '#52c41a',
-  TEXT_DIM:   '#999',
-  TEXT_MUTED: '#666',
-  PRIMARY:    '#1890ff',
-  SUCCESS:    '#52c41a',
-  DANGER:     '#ff4d4f',
-  WARNING:    '#faad14',
-};
 
 function setThresholds(spike, leak) {
   SPIKE_THRESHOLD = spike;
