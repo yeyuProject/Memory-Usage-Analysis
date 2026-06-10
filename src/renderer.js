@@ -410,11 +410,35 @@ function renderSystem(sys) {
   els.procCount.textContent = allProcesses.length;
 }
 
+// Smart process name matching. Supports:
+//   "chrome"        - substring match (default, backward compatible)
+//   "chrome*"       - prefix match (must start with "chrome")
+//   "chrome;code"   - OR match (any of the terms matches)
+//   "chrome*;code"  - prefix + OR combined
+// Matching is case-insensitive and also checks PID as a string.
+function matchProcessSearch(term, p) {
+  if (!term) return true;
+  const name = p.name.toLowerCase();
+  const pidStr = String(p.pid);
+  // Split on ';' for OR. Empty fragments are ignored.
+  const orParts = term.split(';').map(s => s.trim()).filter(Boolean);
+  // A process matches if ANY of the OR parts matches.
+  return orParts.some(part => {
+    if (part.endsWith('*')) {
+      // Prefix match: must start with the part (without the trailing *)
+      const prefix = part.slice(0, -1);
+      return name.startsWith(prefix) || pidStr.startsWith(prefix);
+    }
+    // Substring match (existing behavior)
+    return name.includes(part) || pidStr.includes(part);
+  });
+}
+
 function getFilteredProcesses() {
   let list = allProcesses;
   const term = els.searchInput.value.trim().toLowerCase();
   if (term) {
-    list = list.filter(p => p.name.toLowerCase().includes(term) || String(p.pid).includes(term));
+    list = list.filter(p => matchProcessSearch(term, p));
   }
   if (filterCriteria.processIds.length > 0) {
     list = list.filter(p => filterCriteria.processIds.includes(p.pid));
