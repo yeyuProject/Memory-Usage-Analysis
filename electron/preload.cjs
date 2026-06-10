@@ -26,4 +26,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
   resetConfig: () => ipcRenderer.invoke('reset-config'),
+  // History snapshot export (captures all processes + history analysis)
+  exportHistorySnapshot: (opts) => ipcRenderer.invoke('export-history-snapshot', opts),
 });

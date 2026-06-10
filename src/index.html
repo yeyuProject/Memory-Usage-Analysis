@@ -269,7 +269,12 @@
               <label><input type="checkbox" id="exportAll" checked /> 包含所有进程</label>
               <button id="exportBtn" class="btn btn-primary">导出报告</button>
             </div>
-            <div id="exportPreview" class="empty" style="margin-top:12px">点击"导出报告"生成文件</div>
+            <div class="form-row" style="margin-top:8px;border-top:1px solid #eee;padding-top:8px">
+              <label style="font-weight:600">历史快照:</label>
+              <span style="color:#888;font-size:12px">导出所有进程 + 基线/峰值/突变/泄漏分析 (CSV/JSON)</span>
+              <button id="snapshotBtn" class="btn btn-primary">导出历史快照</button>
+            </div>
+            <div id="exportPreview" class="empty" style="margin-top:12px">点击"导出报告"或"导出历史快照"生成文件</div>
           </div>
         </div>
       </div>

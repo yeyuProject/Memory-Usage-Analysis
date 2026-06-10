@@ -538,6 +538,92 @@ ipcMain.handle('reset-config', () => {
   }
 });
 
+// ============== History snapshot export ==============
+// Snapshot captures the full current state: every process + its history analysis
+// (baseline/peak/spikePercent/leakPercent/samples) + system info + thresholds.
+// Use case: offline analysis, debugging "what was the state when X happened",
+// comparing two snapshots to detect drift.
+ipcMain.handle('export-history-snapshot', async (_e, opts) => {
+  const format = (opts && opts.format) || 'csv';
+  const includeAll = !opts || opts.includeAll !== false;  // default true
+  const defaultName = `snapshot-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+  const filters = format === 'json'
+    ? [{ name: 'JSON', extensions: ['json'] }]
+    : [{ name: 'CSV', extensions: ['csv'] }];
+  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+    title: '导出历史快照',
+    defaultPath: defaultName + '.' + format,
+    filters,
+  });
+  if (canceled || !filePath) return { ok: false, error: '用户取消' };
+
+  // Build the snapshot rows from processCache + processHistory
+  const rows = [];
+  for (const p of processCache) {
+    if (!includeAll && p.memoryUsage < 1024 * 1024) continue;  // skip <1MB if not "all"
+    const h = processHistory.get(p.pid) || {};
+    const baseline = h.baseline || p.memoryUsage;
+    const peak = h.peak || p.memoryUsage;
+    const spikePercent = baseline > 0
+      ? Math.round(((p.memoryUsage - baseline) / baseline) * 100)
+      : 0;
+    const leakPercent = computeLeakPercent(h.samples || []);
+    rows.push({
+      pid: p.pid,
+      name: p.name,
+      memoryUsage: p.memoryUsage,
+      baseline,
+      peak,
+      spikePercent,
+      leakPercent,
+      sampleCount: (h.samples || []).length,
+    });
+  }
+  // Sort by memoryUsage desc for consistent output
+  rows.sort((a, b) => b.memoryUsage - a.memoryUsage);
+
+  const snapshot = {
+    generatedAt: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    system: systemCache,
+    thresholds: { ...DEFAULT_CONFIG, ...loadConfig() },  // current effective values
+    processCount: rows.length,
+    processes: rows,
+  };
+
+  try {
+    if (format === 'json') {
+      fs.writeFileSync(filePath, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
+    } else {
+      // CSV: header + one row per process. Wide format, one column per metric.
+      const cols = ['pid', 'name', 'memoryUsage', 'baseline', 'peak', 'spikePercent', 'leakPercent', 'sampleCount'];
+      const escape = v => {
+        const s = String(v);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      };
+      const lines = [cols.join(',')];
+      rows.forEach(r => {
+        lines.push(cols.map(c => escape(r[c])).join(','));
+      });
+      // First lines: metadata header (commented with #)
+      const meta = [
+        `# Generated: ${snapshot.generatedAt}`,
+        `# App version: ${snapshot.appVersion}`,
+        `# Process count: ${snapshot.processCount}`,
+        `# Thresholds: spike=${snapshot.thresholds.spikeThreshold}% leak=${snapshot.thresholds.leakThreshold}%`,
+        `# System: totalMem=${snapshot.system ? snapshot.system.totalPhysicalMemory : 'n/a'}`,
+      ].join('\n');
+      fs.writeFileSync(filePath, meta + '\n' + lines.join('\n') + '\n', 'utf8');
+    }
+    return { ok: true, filePath, processCount: rows.length };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // Ensure an in-flight recording is flushed before app exit.
 app.on('before-quit', () => {
   if (recordingState && recordingState.stream) {

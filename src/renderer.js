@@ -54,6 +54,7 @@ const els = {
   exportAll: $('exportAll'),
   exportBtn: $('exportBtn'),
   exportPreview: $('exportPreview'),
+  snapshotBtn: $('snapshotBtn'),
   spikeTbody: $('spikeTbody'),
   spikeHint: $('spikeHint'),
   leakTbody: $('leakTbody'),
@@ -828,6 +829,24 @@ function exportReport() {
   showToast(`已导出 ${data.length} 条记录`, 'info');
 }
 
+// Export a richer snapshot: current state + per-process history analysis.
+// Captures: pid, name, memory, baseline, peak, spikePercent, leakPercent, sampleCount.
+// JSON output also includes system info + thresholds for full reconstruction.
+async function exportHistorySnapshot() {
+  const format = els.exportFormat.value === 'html' ? 'json' : els.exportFormat.value;  // snapshot supports CSV/JSON
+  const result = await window.electronAPI.exportHistorySnapshot({
+    format,
+    includeAll: els.exportAll.checked,
+  });
+  if (result.ok) {
+    els.exportPreview.className = '';
+    els.exportPreview.innerHTML = `<b>已导出历史快照</b><br>进程数: ${result.processCount}<br>格式: ${format.toUpperCase()}<br>路径: ${escapeHtml(result.filePath)}`;
+    showToast(`已导出 ${result.processCount} 个进程的历史快照`, 'info');
+  } else if (result.error !== '用户取消') {
+    showToast('快照导出失败: ' + result.error, 'error');
+  }
+}
+
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -984,6 +1003,7 @@ els.ruleTbody.addEventListener('click', (e) => {
 });
 els.chartProcess.addEventListener('change', renderChartPage);
 els.exportBtn.addEventListener('click', exportReport);
+els.snapshotBtn.addEventListener('click', exportHistorySnapshot);
 
 refresh();
 refreshTimer = setInterval(refresh, 2000);
