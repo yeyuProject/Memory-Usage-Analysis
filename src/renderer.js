@@ -26,6 +26,7 @@ const els = {
   bPWS: $('bPWS'),
   bCommit: $('bCommit'),
   chartProcess: $('chartProcess'),
+  recTopN: $('recTopN'),
   recInterval: $('recInterval'),
   recDuration: $('recDuration'),
   recStart: $('recStart'),
@@ -578,104 +579,102 @@ function populateFilterProcesses() {
   ).join('');
 }
 
-function startRecording() {
-  const interval = Math.max(500, Number(els.recInterval.value) || 1000);
-  const duration = Math.max(5, Number(els.recDuration.value) || 60);
-  if (!selectedPid) {
-    showToast('请先在"进程"标签选择一个进程', 'warn');
-    switchTab('processes');
+// Persistent recording: main process owns the file. Renderer just sends commands
+// and polls status for the live counter. The recordings list is loaded from disk.
+let statusPollTimer = null;
+
+async function startRecording() {
+  const interval = Math.max(1000, Number(els.recInterval.value) || 2000);
+  const topN = Math.min(50, Math.max(5, Number(els.recTopN.value) || 20));
+  const result = await window.electronAPI.startRecording({ interval, topN });
+  if (!result.ok) {
+    showToast(result.error || '启动录制失败', 'error');
     return;
   }
-  const proc = allProcesses.find(p => p.pid === selectedPid);
-  if (!proc) {
-    showToast('所选进程已不存在', 'error');
-    return;
-  }
-  // Defensive: clear any leftover timer before starting a new one
-  if (activeRecordingTimer) {
-    clearInterval(activeRecordingTimer);
-    activeRecordingTimer = null;
-  }
-  activeRecording = {
-    id: 'rec_' + Date.now(),
-    processId: selectedPid,
-    processName: proc.name,
-    interval,
-    duration,
-    startTime: Date.now(),
-    data: [],
-    status: 'recording',
-  };
-  recordings.push(activeRecording);
   els.recStart.disabled = true;
   els.recStop.disabled = false;
-  updateRecStatus();
-  const endTime = activeRecording.startTime + duration * 1000;
-  activeRecordingTimer = setInterval(() => {
-    const now = Date.now();
-    if (now >= endTime) { stopRecording(); return; }
-    // Defensive: stopRecording may have nulled activeRecording already
-    if (!activeRecording) return;
-    const p = allProcesses.find(x => x.pid === activeRecording.processId);
-    if (!p) { stopRecording(); return; }
-    activeRecording.data.push({
-      timestamp: now,
-      workingSetSize: p.memoryUsage,
-      privateWorkingSetSize: Math.floor(p.memoryUsage * MEM_RATIOS.PRIVATE_RATIO),
-      commitSize: Math.floor(p.memoryUsage * MEM_RATIOS.COMMIT_RATIO),
-    });
-    updateRecStatus();
-  }, interval);
+  // Poll status every interval to update counter
+  if (statusPollTimer) clearInterval(statusPollTimer);
+  statusPollTimer = setInterval(updateRecStatus, interval);
+  await updateRecStatus();
+  await loadRecordings();
+  showToast(`录制已开始 (Top ${topN}, 间隔 ${interval}ms)`, 'info');
 }
 
-function stopRecording() {
-  if (activeRecordingTimer) {
-    clearInterval(activeRecordingTimer);
-    activeRecordingTimer = null;
+async function stopRecording() {
+  const result = await window.electronAPI.stopRecording();
+  if (!result.ok) {
+    showToast(result.error || '停止录制失败', 'error');
+    return;
   }
-  if (activeRecording) {
-    activeRecording.status = 'completed';
-    activeRecording.endTime = Date.now();
-  }
-  activeRecording = null;
+  if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
   els.recStart.disabled = false;
   els.recStop.disabled = true;
-  updateRecStatus();
-  renderRecordings();
-  renderChartPage();
-  showToast('录制完成', 'info');
+  activeRecording = null;
+  await updateRecStatus();
+  await loadRecordings();
+  showToast(`录制完成: ${result.sampleCount} 个采样点`, 'info');
 }
 
-function updateRecStatus() {
-  if (activeRecording) {
-    const elapsed = ((Date.now() - activeRecording.startTime) / 1000).toFixed(1);
-    const total = (activeRecording.duration).toFixed(0);
+async function updateRecStatus() {
+  const status = await window.electronAPI.getRecordingStatus();
+  if (status.active) {
+    activeRecording = status;
+    const elapsed = ((Date.now() - status.startTime) / 1000).toFixed(1);
     els.recStatus.className = 'recording';
-    els.recStatus.textContent = `录制中: ${activeRecording.processName} | 已采集 ${activeRecording.data.length} 个点 | ${elapsed}s / ${total}s`;
+    els.recStatus.textContent = `录制中: Top ${status.topN} | 已采集 ${status.sampleCount} 个点 | ${elapsed}s | 间隔 ${status.interval}ms`;
   } else {
-    const last = recordings[recordings.length - 1];
-    if (last) {
-      els.recStatus.className = 'completed';
-      els.recStatus.textContent = `最近录制完成: ${last.processName} - ${last.data.length} 个数据点`;
-    } else {
-      els.recStatus.className = 'idle';
-      els.recStatus.textContent = '未在录制';
-    }
+    els.recStatus.className = 'idle';
+    els.recStatus.textContent = '未在录制 (数据保存到本地 JSONL, 刷新不丢失)';
   }
+}
+
+async function loadRecordings() {
+  recordings = await window.electronAPI.listRecordings();
+  renderRecordings();
 }
 
 function renderRecordings() {
-  if (recordings.length === 0) {
-    els.recTbody.innerHTML = '<tr><td colspan="5" class="empty">暂无录制</td></tr>';
+  if (!recordings || recordings.length === 0) {
+    els.recTbody.innerHTML = '<tr><td colspan="6" class="empty">暂无录制</td></tr>';
     return;
   }
-  els.recTbody.innerHTML = recordings.map(r => `<tr>
-    <td style="font-family:monospace;font-size:11px">${r.id}</td>
-    <td>${new Date(r.startTime).toLocaleString()}</td>
-    <td>${r.data.length}</td>
-    <td>${r.status === 'recording' ? '<span style="color:#faad14">录制中</span>' : '<span style="color:#52c41a">已完成</span>'}</td>
-    <td><button class="btn btn-danger" data-del-rec="${r.id}">删除</button></td>
-  </tr>`).join('');
+  els.recTbody.innerHTML = recordings.map(r => {
+    const sizeKb = (r.sizeBytes / 1024).toFixed(1);
+    const dur = r.sampleCount && r.interval
+      ? `${(r.sampleCount * r.interval / 1000).toFixed(0)}s`
+      : '-';
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px" title="${escapeHtml(r.id)}">${escapeHtml(r.id)}</td>
+      <td>${new Date(r.startTime).toLocaleString()}</td>
+      <td>${r.sampleCount || 0} <span style="color:#999;font-size:11px">(${dur})</span></td>
+      <td>${r.interval}ms</td>
+      <td>${sizeKb} KB</td>
+      <td>
+        <button class="btn btn-export-csv" data-export-rec="${r.id}" title="导出为CSV">CSV</button>
+        <button class="btn btn-danger" data-del-rec="${r.id}" title="删除录制">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function deleteRecording(id) {
+  const result = await window.electronAPI.deleteRecording(id);
+  if (result.ok) {
+    await loadRecordings();
+    showToast('已删除', 'info');
+  } else {
+    showToast('删除失败: ' + result.error, 'error');
+  }
+}
+
+async function exportRecordingCsv(id) {
+  const result = await window.electronAPI.exportRecordingCsv(id);
+  if (result.ok) {
+    showToast(`已导出: ${result.filePath}`, 'info');
+  } else if (result.error !== '用户取消') {
+    showToast('导出失败: ' + result.error, 'error');
+  }
 }
 
 function applyFilter() {
@@ -883,9 +882,23 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideContex
 els.recStart.addEventListener('click', startRecording);
 els.recStop.addEventListener('click', stopRecording);
 els.recTbody.addEventListener('click', (e) => {
-  if (e.target.dataset.delRec) {
-    recordings = recordings.filter(r => r.id !== e.target.dataset.delRec);
-    renderRecordings();
+  const t = e.target;
+  if (t.dataset.delRec) deleteRecording(t.dataset.delRec);
+  else if (t.dataset.exportRec) exportRecordingCsv(t.dataset.exportRec);
+});
+
+// Load recordings from disk on startup and sync status (handles crash recovery)
+loadRecordings();
+window.electronAPI.getRecordingStatus().then(status => {
+  if (status.active) {
+    // Main is still recording (e.g., after renderer reload) - re-attach UI
+    activeRecording = status;
+    els.recStart.disabled = true;
+    els.recStop.disabled = false;
+    const interval = status.interval || 2000;
+    if (statusPollTimer) clearInterval(statusPollTimer);
+    statusPollTimer = setInterval(updateRecStatus, interval);
+    updateRecStatus();
   }
 });
 els.filterApply.addEventListener('click', applyFilter);

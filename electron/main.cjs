@@ -3,10 +3,11 @@
  * Pure CommonJS for maximum stability
  */
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const path = require('path');
+const fs = require('fs');
 
 const execAsync = promisify(exec);
 
@@ -23,6 +24,189 @@ let refreshInterval = null;
 let isCollecting = false;
 let processHistory = new Map();   // pid -> { baseline, peak, peakTime, samples[] }
 const MAX_SAMPLES = 60;            // 2s interval × 60 = 2 minutes of history
+
+// ============== Persistent recording state ==============
+// Recordings are stored as JSONL (one JSON sample per line) in userData/recordings/.
+// System-wide recording captures top-N processes + system totals at each tick.
+// File format:
+//   {"header":{...metadata...}}
+//   {"t":1700000000000,"sys":{...},"top":[{"pid":1234,"name":"x","mem":12345678}, ...]}
+let recordingState = null;        // { id, startTime, interval, filePath, stream, sampleCount }
+const RECORDINGS_DIR = path.join(app.getPath('userData'), 'recordings');
+const TOP_N_DEFAULT = 20;
+
+function ensureRecordingsDir() {
+  if (!fs.existsSync(RECORDINGS_DIR)) {
+    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+  }
+}
+
+// Append one sample to the active recording. Called from the periodic collector.
+// Cheap: writes a single line (~1KB) every interval. fs.createWriteStream buffers.
+function appendRecordingSample(timestamp, processes, systemInfo) {
+  if (!recordingState || !recordingState.stream) return;
+  try {
+    const top = [...processes]
+      .sort((a, b) => b.memoryUsage - a.memoryUsage)
+      .slice(0, recordingState.topN)
+      .map(p => ({ pid: p.pid, name: p.name, mem: p.memoryUsage }));
+    const sample = {
+      t: timestamp,
+      sys: {
+        totalMem: systemInfo.totalMemory,
+        usedMem: systemInfo.usedMemory,
+        freeMem: systemInfo.freeMemory,
+      },
+      top,
+    };
+    recordingState.stream.write(JSON.stringify(sample) + '\n');
+    recordingState.sampleCount++;
+  } catch (e) {
+    console.error('recording write failed:', e.message);
+  }
+}
+
+function startRecording({ interval = 2000, topN = TOP_N_DEFAULT } = {}) {
+  if (recordingState) {
+    return { ok: false, error: '已有录制在进行中' };
+  }
+  ensureRecordingsDir();
+  const id = 'rec_' + Date.now();
+  const filePath = path.join(RECORDINGS_DIR, id + '.jsonl');
+  try {
+    const stream = fs.createWriteStream(filePath, { flags: 'w' });
+    // Write header line for self-describing file
+    stream.write(JSON.stringify({
+      header: {
+        id,
+        startTime: Date.now(),
+        interval,
+        topN,
+        version: app.getVersion(),
+      },
+    }) + '\n');
+    recordingState = { id, startTime: Date.now(), interval, topN, filePath, stream, sampleCount: 0 };
+    return { ok: true, id, filePath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function stopRecording() {
+  if (!recordingState) return { ok: false, error: '当前未在录制' };
+  const { id, filePath, sampleCount } = recordingState;
+  return new Promise(resolve => {
+    recordingState.stream.end(() => {
+      recordingState = null;
+      resolve({ ok: true, id, filePath, sampleCount });
+    });
+  });
+}
+
+// List all recordings on disk, sorted newest first. Reads only the header line.
+function listRecordings() {
+  ensureRecordingsDir();
+  const files = fs.readdirSync(RECORDINGS_DIR).filter(f => f.endsWith('.jsonl'));
+  const items = [];
+  for (const f of files) {
+    const filePath = path.join(RECORDINGS_DIR, f);
+    try {
+      const stat = fs.statSync(filePath);
+      const firstLine = fs.readFileSync(filePath, 'utf8').split('\n')[0];
+      const header = JSON.parse(firstLine).header || {};
+      // Read last line to get end time and final sample count
+      const all = fs.readFileSync(filePath, 'utf8').trim().split('\n');
+      let endTime = header.startTime;
+      let sampleCount = 0;
+      for (let i = 1; i < all.length; i++) {
+        try {
+          const s = JSON.parse(all[i]);
+          endTime = s.t || endTime;
+          sampleCount++;
+        } catch {}
+      }
+      items.push({
+        id: header.id || f.replace('.jsonl', ''),
+        filePath,
+        startTime: header.startTime || stat.birthtimeMs,
+        endTime,
+        interval: header.interval || 0,
+        topN: header.topN || TOP_N_DEFAULT,
+        sampleCount,
+        sizeBytes: stat.size,
+      });
+    } catch (e) {
+      items.push({ id: f, filePath, error: e.message, sizeBytes: 0 });
+    }
+  }
+  items.sort((a, b) => b.startTime - a.startTime);
+  return items;
+}
+
+function deleteRecording(id) {
+  const filePath = path.join(RECORDINGS_DIR, id + '.jsonl');
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return { ok: true };
+    }
+    return { ok: false, error: '文件不存在' };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// Convert a JSONL recording to a flat CSV. Streams row-by-row to avoid OOM on big files.
+async function exportRecordingCsv(id) {
+  const filePath = path.join(RECORDINGS_DIR, id + '.jsonl');
+  if (!fs.existsSync(filePath)) return { ok: false, error: '录制不存在' };
+  const { filePath: outPath } = await dialog.showSaveDialog(mainWindow, {
+    title: '导出为 CSV',
+    defaultPath: id + '.csv',
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  if (!outPath) return { ok: false, error: '用户取消' };
+  try {
+    const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+    const header = JSON.parse(lines[0]).header || {};
+    const out = fs.createWriteStream(outPath, { encoding: 'utf8' });
+    // CSV header: timestamp, system_used, system_total, then one column per top-N rank
+    // Since ranks differ per sample, we use a wide format: rank_pid_N, rank_name_N, rank_mem_N
+    const N = header.topN || TOP_N_DEFAULT;
+    const cols = ['timestamp', 'system_used', 'system_total', 'system_free'];
+    for (let i = 0; i < N; i++) {
+      cols.push(`r${i}_pid`, `r${i}_name`, `r${i}_mem`);
+    }
+    out.write(cols.join(',') + '\n');
+    const csvEscape = v => {
+      const s = String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    };
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const s = JSON.parse(line);
+      const row = [
+        new Date(s.t).toISOString(),
+        s.sys.usedMem || 0,
+        s.sys.totalMem || 0,
+        s.sys.freeMem || 0,
+      ];
+      for (let j = 0; j < N; j++) {
+        const p = s.top[j];
+        row.push(p ? p.pid : '', p ? p.name : '', p ? p.mem : 0);
+      }
+      out.write(row.map(csvEscape).join(',') + '\n');
+    }
+    await new Promise((res, rej) => out.end(err => err ? rej(err) : res()));
+    return { ok: true, filePath: outPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
 
 const COLLECTOR_SCRIPT = `
 $procs = Get-Process | Where-Object { $_.Id -gt 0 } | ForEach-Object {
@@ -81,6 +265,19 @@ async function collectData() {
         memoryLoad: Math.round(((data.system.total - data.system.free) / data.system.total) * 100),
         timestamp: Date.now(),
       };
+    }
+
+    // Append to active recording (if any). Cheap: one JSONL line.
+    if (recordingState && processCache.length > 0 && systemCache) {
+      appendRecordingSample(
+        Date.now(),
+        processCache,
+        {
+          totalMemory: systemCache.totalPhysicalMemory,
+          usedMemory: systemCache.totalPhysicalMemory - systemCache.availablePhysicalMemory,
+          freeMemory: systemCache.availablePhysicalMemory,
+        }
+      );
     }
   } catch (err) {
     console.error('[collectData] error:', err.message);
@@ -233,6 +430,40 @@ ipcMain.handle('write-clipboard', (_e, text) => {
     return { success: true };
   }
   return { success: false, error: '无效的内容' };
+});
+
+// ============== Persistent recording IPC ==============
+// Recording is owned by the main process so it survives renderer reloads and
+// can capture data even while the user is on another tab.
+ipcMain.handle('start-recording', (_e, opts) => {
+  return startRecording(opts || {});
+});
+ipcMain.handle('stop-recording', async () => {
+  return await stopRecording();
+});
+ipcMain.handle('get-recording-status', () => {
+  if (!recordingState) return { active: false };
+  return {
+    active: true,
+    id: recordingState.id,
+    startTime: recordingState.startTime,
+    interval: recordingState.interval,
+    topN: recordingState.topN,
+    sampleCount: recordingState.sampleCount,
+    filePath: recordingState.filePath,
+  };
+});
+ipcMain.handle('list-recordings', () => listRecordings());
+ipcMain.handle('delete-recording', (_e, id) => deleteRecording(id));
+ipcMain.handle('export-recording-csv', async (_e, id) => {
+  return await exportRecordingCsv(id);
+});
+
+// Ensure an in-flight recording is flushed before app exit.
+app.on('before-quit', () => {
+  if (recordingState && recordingState.stream) {
+    try { recordingState.stream.end(); } catch {}
+  }
 });
 
 app.whenReady().then(() => {

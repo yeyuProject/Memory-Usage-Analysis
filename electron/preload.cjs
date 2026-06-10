@@ -15,4 +15,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
   openFileLocation: (name) => ipcRenderer.invoke('open-file-location', name),
   writeClipboard: (text) => ipcRenderer.invoke('write-clipboard', text),
+  // Persistent recording API
+  startRecording: (opts) => ipcRenderer.invoke('start-recording', opts),
+  stopRecording: () => ipcRenderer.invoke('stop-recording'),
+  getRecordingStatus: () => ipcRenderer.invoke('get-recording-status'),
+  listRecordings: () => ipcRenderer.invoke('list-recordings'),
+  deleteRecording: (id) => ipcRenderer.invoke('delete-recording', id),
+  exportRecordingCsv: (id) => ipcRenderer.invoke('export-recording-csv', id),
 });

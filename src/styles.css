@@ -44,6 +44,8 @@ tbody tr.selected { background: #e6f7ff; }
 .btn-primary:hover { background: #40a9ff; color: #fff; }
 .btn-danger { background: #ff4d4f; color: #fff; border-color: #ff4d4f; }
 .btn-danger:hover { background: #ff7875; color: #fff; }
+.btn-export-csv { background: #52c41a; color: #fff; border-color: #52c41a; padding: 4px 10px; font-size: 12px; }
+.btn-export-csv:hover { background: #73d13d; color: #fff; }
 
 .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; }
 .detail-row .label { color: #666; font-size: 14px; margin: 0; }
