@@ -48,6 +48,7 @@ const els = {
   exportPreview: $('exportPreview'),
   spikeTbody: $('spikeTbody'),
   spikeHint: $('spikeHint'),
+  leakTbody: $('leakTbody'),
   ctxMenu: $('ctxMenu'),
 };
 
@@ -344,6 +345,7 @@ async function refresh() {
     renderTable();
     renderDashCharts();
     renderSpikes();
+    renderLeaks();
     renderChartPage();
     populateFilterProcesses();
     checkNotifications();
@@ -482,6 +484,38 @@ function renderSpikes() {
       <td style="color:#999">${formatBytes(s.history.baseline)}</td>
       <td style="color:#faad14">${formatBytes(s.history.peak)}</td>
       <td style="color:${color};font-weight:600">${arrow}${Math.abs(pct)}%</td>
+    </tr>`;
+  }).join('');
+}
+
+// Leak detection: a process with a sustained upward trend over the sample window.
+// Threshold: leakPercent >= 30 (i.e., memory growing at >=30% of baseline per window).
+const LEAK_THRESHOLD = 30;
+
+function renderLeaks() {
+  const leaks = [];
+  for (const p of allProcesses) {
+    const h = processHistory[p.pid];
+    if (!h || h.sampleCount < 10) continue; // need enough samples for slope
+    if (h.leakPercent >= LEAK_THRESHOLD) {
+      leaks.push({ ...p, history: h });
+    }
+  }
+  // Sort by steepest leak first
+  leaks.sort((a, b) => b.history.leakPercent - a.history.leakPercent);
+
+  if (leaks.length === 0) {
+    els.leakTbody.innerHTML = `<tr><td colspan="5" class="empty">暂无内存泄漏迹象 (需≥10个样本+≥${LEAK_THRESHOLD}%增长)</td></tr>`;
+    return;
+  }
+  els.leakTbody.innerHTML = leaks.slice(0, 10).map(l => {
+    const pct = l.history.leakPercent;
+    return `<tr data-pid="${l.pid}" style="cursor:pointer">
+      <td>${l.pid}</td>
+      <td>${escapeHtml(l.name)}</td>
+      <td>${formatBytes(l.history.current)}</td>
+      <td style="color:#999">${formatBytes(l.history.baseline)}</td>
+      <td style="color:#ff4d4f;font-weight:600">↗ +${pct}%/窗</td>
     </tr>`;
   }).join('');
 }
@@ -829,6 +863,14 @@ els.spikeTbody.addEventListener('click', (e) => {
   showDetail(selectedPid);
   switchTab('processes');
   // Re-render the process table to show the selected row
+  renderTable();
+});
+els.leakTbody.addEventListener('click', (e) => {
+  const tr = e.target.closest('tr');
+  if (!tr || !tr.dataset.pid) return;
+  selectedPid = Number(tr.dataset.pid);
+  showDetail(selectedPid);
+  switchTab('processes');
   renderTable();
 });
 els.ctxMenu.addEventListener('click', (e) => {

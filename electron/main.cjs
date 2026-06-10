@@ -122,8 +122,12 @@ function createWindow() {
 ipcMain.handle('get-processes', () => processCache);
 ipcMain.handle('get-system-info', () => systemCache);
 
-// Returns spike analysis for each cached process: { baseline, peak, peakTime, spikePercent, sampleCount }
+// Returns spike + leak analysis for each cached process:
+// { baseline, peak, peakTime, spikePercent, leakPercent, trend, sampleCount }
 // spikePercent = ((current - baseline) / baseline) * 100, or 0 if baseline is 0
+// leakPercent = normalized linear-regression slope (per sample).
+//   +50% means memory is rising 50% of baseline per sample window (~2 min).
+//   Stable processes oscillate around 0%; a consistently positive slope = leak.
 ipcMain.handle('get-process-history', () => {
   const result = {};
   for (const [pid, h] of processHistory) {
@@ -138,11 +142,36 @@ ipcMain.handle('get-process-history', () => {
       peakTime: h.peakTime,
       current,
       spikePercent: spikePct,
+      leakPercent: computeLeakPercent(h.samples),
       sampleCount: h.samples.length,
     };
   }
   return result;
 });
+
+// Leak detection: simple least-squares slope normalized by mean.
+// Returns a percentage where 0 = stable, positive = trending up, negative = trending down.
+// Requires at least 5 samples to be meaningful; returns 0 if fewer.
+function computeLeakPercent(samples) {
+  if (!samples || samples.length < 5) return 0;
+  const n = samples.length;
+  // Index = 0,1,2,...,n-1. Treat time as evenly spaced.
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i;
+    sumY += samples[i];
+    sumXY += i * samples[i];
+    sumXX += i * i;
+  }
+  const denom = n * sumXX - sumX * sumX;
+  if (denom === 0) return 0;
+  const slope = (n * sumXY - sumX * sumY) / denom; // bytes per sample
+  const mean = sumY / n;
+  if (mean === 0) return 0;
+  // Slope per sample as a percentage of mean. Multiply by 60 to approximate
+  // "percent growth per full window" rather than per single sample step.
+  return Math.round((slope / mean) * 60 * 100);
+}
 ipcMain.handle('get-process-memory', (_e, pid) => {
   // Defensive: reject invalid pids before they cause a crash
   if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {

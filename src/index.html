@@ -62,6 +62,20 @@
           </div>
         </div>
         <div class="card">
+          <div class="card-header">
+            <h2>疑似内存泄漏 (持续增长)</h2>
+            <span class="hint" style="color:#999;font-size:12px">需 ≥10 个样本, 线性回归斜率 ≥30%/窗</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead>
+                <tr><th style="width:80px">PID</th><th>进程</th><th style="width:120px">当前</th><th style="width:120px">基线</th><th style="width:120px">趋势</th></tr>
+              </thead>
+              <tbody id="leakTbody"><tr><td colspan="5" class="empty">暂无内存泄漏迹象</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
           <div class="card-header"><h2>快捷操作</h2></div>
           <div class="card-body">
             <button class="btn btn-primary" data-go="processes">查看所有进程</button>
