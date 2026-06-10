@@ -13,6 +13,7 @@ const els = {
   procCount: $('procCount'),
   lastUpdate: $('lastUpdate'),
   status: $('status'),
+  collectorStats: $('collectorStats'),
   toast: $('toast'),
   searchInput: $('searchInput'),
   searchClear: $('searchClear'),
@@ -106,6 +107,35 @@ function showToast(msg, type = 'info') {
   setTimeout(() => { els.toast.className = 'toast'; }, 3000);
 }
 function setStatus(msg) { els.status.textContent = msg; }
+
+// Render the PowerShell collector stats in the status bar. Shows latency of
+// the most recent COLLECT roundtrip and total request count, so the user
+// can see the long-session optimization is working in real-time.
+async function updateCollectorStats() {
+  if (!els.collectorStats) return;
+  try {
+    const stats = await window.electronAPI.getCollectorStats();
+    if (!stats.alive) {
+      els.collectorStats.textContent = 'PS: 未启动';
+      els.collectorStats.style.color = '#999';
+      return;
+    }
+    const lat = stats.lastDurationMs != null ? `${stats.lastDurationMs}ms` : '--';
+    const errSuffix = stats.errors > 0 ? ` | 错误 ${stats.errors}` : '';
+    const pendSuffix = stats.pending ? ' | 处理中' : '';
+    const qSuffix = stats.queueLength > 0 ? ` | 队列 ${stats.queueLength}` : '';
+    els.collectorStats.textContent = `PS: ${lat} | 请求 ${stats.requests}${errSuffix}${pendSuffix}${qSuffix}`;
+    // Color: green if fast (<200ms), orange if slow (200-500ms), red if very slow (>500ms)
+    const d = stats.lastDurationMs;
+    if (d == null) els.collectorStats.style.color = '#999';
+    else if (d < 200) els.collectorStats.style.color = '#52c41a';
+    else if (d < 500) els.collectorStats.style.color = '#faad14';
+    else els.collectorStats.style.color = '#ff4d4f';
+  } catch (e) {
+    els.collectorStats.textContent = 'PS: 错误';
+    els.collectorStats.style.color = '#ff4d4f';
+  }
+}
 
 // ==================== Context Menu ====================
 let ctxTargetPid = null;
@@ -363,6 +393,7 @@ async function refresh() {
     checkNotifications();
     els.lastUpdate.textContent = '更新: ' + new Date().toLocaleTimeString();
     setStatus(`已加载 ${allProcesses.length} 个进程`);
+    updateCollectorStats();
   } catch (e) {
     setStatus('错误: ' + e.message);
   } finally {
