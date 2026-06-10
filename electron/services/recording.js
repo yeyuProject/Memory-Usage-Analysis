@@ -22,6 +22,7 @@ const fs = require('fs');
 const { app, dialog } = require('electron');
 
 const TOP_N_DEFAULT = 20;
+const JSONL_EXT = '.jsonl';
 
 let recordingState = null;   // { id, startTime, interval, filePath, stream, sampleCount }
 
@@ -89,7 +90,7 @@ function startRecording({ interval = 2000, topN = TOP_N_DEFAULT } = {}) {
   }
   const dir = ensureRecordingsDir();
   const id = 'rec_' + Date.now();
-  const filePath = path.join(dir, id + '.jsonl');
+  const filePath = path.join(dir, id + JSONL_EXT);
   try {
     const stream = fs.createWriteStream(filePath, { flags: 'w' });
     stream.write(JSON.stringify({
@@ -149,7 +150,7 @@ function getStatus() {
  */
 function listRecordings() {
   const dir = ensureRecordingsDir();
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl'));
+  const files = fs.readdirSync(dir).filter(f => f.endsWith(JSONL_EXT));
   const items = [];
   for (const f of files) {
     const filePath = path.join(dir, f);
@@ -168,7 +169,7 @@ function listRecordings() {
         } catch {}
       }
       items.push({
-        id: header.id || f.replace('.jsonl', ''),
+        id: header.id || f.replace(JSONL_EXT, ''),
         filePath,
         startTime: header.startTime || stat.birthtimeMs,
         endTime,
@@ -191,7 +192,7 @@ function listRecordings() {
  * @returns {{ok:true}|{ok:false,error:string}}
  */
 function deleteRecording(id) {
-  const filePath = path.join(getRecordingsDir(), id + '.jsonl');
+  const filePath = path.join(getRecordingsDir(), id + JSONL_EXT);
   try {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -214,7 +215,7 @@ function deleteRecording(id) {
  * @returns {Promise<{ok:true,filePath:string}|{ok:false,error:string}>}
  */
 async function exportCsv(id, parentWindow) {
-  const filePath = path.join(getRecordingsDir(), id + '.jsonl');
+  const filePath = path.join(getRecordingsDir(), id + JSONL_EXT);
   if (!fs.existsSync(filePath)) return { ok: false, error: '录制不存在' };
   const { filePath: outPath, canceled } = await dialog.showSaveDialog(parentWindow, {
     title: '导出为 CSV',
