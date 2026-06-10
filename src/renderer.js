@@ -46,6 +46,8 @@ const els = {
   exportAll: $('exportAll'),
   exportBtn: $('exportBtn'),
   exportPreview: $('exportPreview'),
+  spikeTbody: $('spikeTbody'),
+  spikeHint: $('spikeHint'),
   ctxMenu: $('ctxMenu'),
 };
 
@@ -57,6 +59,7 @@ const MEM_RATIOS = {
 };
 
 let allProcesses = [];
+let processHistory = {};   // pid -> { baseline, peak, peakTime, current, spikePercent, sampleCount }
 let selectedPid = null;
 let refreshTimer = null;
 let recordings = [];
@@ -324,8 +327,13 @@ async function refresh() {
   if (isRefreshing) return; // prevent reentrancy
   isRefreshing = true;
   try {
-    const [sys, procs] = await Promise.all([api.getSystemInfo(), api.getProcesses()]);
+    const [sys, procs, history] = await Promise.all([
+      api.getSystemInfo(),
+      api.getProcesses(),
+      api.getProcessHistory(),
+    ]);
     allProcesses = procs || [];
+    processHistory = history || {};
     systemCache = sys;
     // Cache total-memory for percentage calcs (avoids recomputing in every render)
     sysTotalCache = (sys && sys.totalPhysicalMemory) ? sys.totalPhysicalMemory : 1;
@@ -335,6 +343,7 @@ async function refresh() {
     renderSystem(sys);
     renderTable();
     renderDashCharts();
+    renderSpikes();
     renderChartPage();
     populateFilterProcesses();
     checkNotifications();
@@ -377,25 +386,44 @@ function getFilteredProcesses() {
 function renderTable() {
   let matched = getFilteredProcesses();
   if (matched.length === 0) {
-    els.tbody.innerHTML = `<tr><td colspan="5" class="empty">${allProcesses.length === 0 ? '暂无数据' : '无匹配结果'}</td></tr>`;
+    els.tbody.innerHTML = `<tr><td colspan="6" class="empty">${allProcesses.length === 0 ? '暂无数据' : '无匹配结果'}</td></tr>`;
     return;
   }
+  // Enrich with computed spike value (from processHistory)
+  const enriched = matched.map(p => ({
+    ...p,
+    spike: (processHistory[p.pid] && processHistory[p.pid].spikePercent) || 0,
+  }));
   // Apply user-selected sort
-  matched.sort((a, b) => {
+  enriched.sort((a, b) => {
     const va = a[sortKey], vb = b[sortKey];
     if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
     return sortDir === 'asc' ? va - vb : vb - va;
   });
-  const slice = matched.slice(0, 200);
-  els.tbody.innerHTML = slice.map(p => `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
-    <td>${p.pid}</td>
-    <td>${escapeHtml(p.name)}</td>
-    <td>${formatBytes(p.memoryUsage)}</td>
-    <td>${((p.memoryUsage / sysTotalCache) * 100).toFixed(2)}%</td>
-    <td>${selectedPid === p.pid ? '<span style="color:#52c41a;font-weight:500">已选择</span>' : '<span style="color:#999">运行中</span>'}</td>
-  </tr>`).join('');
+  const slice = enriched.slice(0, 200);
+  els.tbody.innerHTML = slice.map(p => {
+    const spike = processHistory[p.pid]?.spikePercent ?? 0;
+    // Only show spike after we have enough samples to establish a baseline (>5)
+    const sampleCount = processHistory[p.pid]?.sampleCount ?? 0;
+    const showSpike = sampleCount > 5;
+    let spikeCell = '<span style="color:#999">--</span>';
+    if (showSpike) {
+      if (spike >= 50) spikeCell = `<span style="color:#ff4d4f;font-weight:600">↑${spike}%</span>`;
+      else if (spike >= 20) spikeCell = `<span style="color:#faad14">↑${spike}%</span>`;
+      else if (spike <= -20) spikeCell = `<span style="color:#52c41a">↓${Math.abs(spike)}%</span>`;
+      else spikeCell = `<span style="color:#999">${spike >= 0 ? '+' : ''}${spike}%</span>`;
+    }
+    return `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
+      <td>${p.pid}</td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${formatBytes(p.memoryUsage)}</td>
+      <td>${((p.memoryUsage / sysTotalCache) * 100).toFixed(2)}%</td>
+      <td>${spikeCell}</td>
+      <td>${selectedPid === p.pid ? '<span style="color:#52c41a;font-weight:500">已选择</span>' : '<span style="color:#999">运行中</span>'}</td>
+    </tr>`;
+  }).join('');
   if (matched.length > 200) {
-    els.tbody.insertAdjacentHTML('beforeend', `<tr><td colspan="5" class="empty">仅显示前200个，共 ${matched.length} 个匹配</td></tr>`);
+    els.tbody.insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty">仅显示前200个，共 ${matched.length} 个匹配</td></tr>`);
   }
   // Update sort indicators
   document.querySelectorAll('th.sortable').forEach(th => {
@@ -414,6 +442,48 @@ function renderDashCharts() {
       { name: '可用', value: systemCache.availablePhysicalMemory },
     ]);
   }
+}
+
+// Spike detection: surface processes whose current memory deviates >=50% from their
+// running baseline. Sample count must be > 5 to establish a meaningful baseline.
+const SPIKE_THRESHOLD = 50;
+
+function renderSpikes() {
+  const spikes = [];
+  for (const p of allProcesses) {
+    const h = processHistory[p.pid];
+    if (!h || h.sampleCount <= 5) continue;
+    if (Math.abs(h.spikePercent) >= SPIKE_THRESHOLD) {
+      spikes.push({ ...p, history: h });
+    }
+  }
+  // Sort by absolute spike, biggest first
+  spikes.sort((a, b) => Math.abs(b.history.spikePercent) - Math.abs(a.history.spikePercent));
+
+  const totalSamples = allProcesses.reduce((s, p) => {
+    const h = processHistory[p.pid];
+    return s + (h ? h.sampleCount : 0);
+  }, 0);
+  const avgSamples = allProcesses.length ? Math.floor(totalSamples / allProcesses.length) : 0;
+  els.spikeHint.textContent = `需积累样本后检测 (当前平均 ${avgSamples} 个/进程, 阈值 ${SPIKE_THRESHOLD}%)`;
+
+  if (spikes.length === 0) {
+    els.spikeTbody.innerHTML = `<tr><td colspan="6" class="empty">${avgSamples < 6 ? '样本不足 (需>5个)' : '暂无明显突变 (≥50%)'}</td></tr>`;
+    return;
+  }
+  els.spikeTbody.innerHTML = spikes.slice(0, 10).map(s => {
+    const pct = s.history.spikePercent;
+    const color = pct >= 50 ? '#ff4d4f' : '#faad14';
+    const arrow = pct >= 0 ? '↑' : '↓';
+    return `<tr data-pid="${s.pid}" style="cursor:pointer">
+      <td>${s.pid}</td>
+      <td>${escapeHtml(s.name)}</td>
+      <td>${formatBytes(s.history.current)}</td>
+      <td style="color:#999">${formatBytes(s.history.baseline)}</td>
+      <td style="color:#faad14">${formatBytes(s.history.peak)}</td>
+      <td style="color:${color};font-weight:600">${arrow}${Math.abs(pct)}%</td>
+    </tr>`;
+  }).join('');
 }
 
 function renderChartPage() {
@@ -750,6 +820,16 @@ els.tbody.addEventListener('contextmenu', (e) => {
   if (!tr || !tr.dataset.pid) return;
   e.preventDefault();
   showContextMenu(e.clientX, e.clientY, Number(tr.dataset.pid), tr.children[1].textContent);
+});
+els.spikeTbody.addEventListener('click', (e) => {
+  const tr = e.target.closest('tr');
+  if (!tr || !tr.dataset.pid) return;
+  // Jump to process detail and select the process
+  selectedPid = Number(tr.dataset.pid);
+  showDetail(selectedPid);
+  switchTab('processes');
+  // Re-render the process table to show the selected row
+  renderTable();
 });
 els.ctxMenu.addEventListener('click', (e) => {
   const item = e.target.closest('.ctx-item');

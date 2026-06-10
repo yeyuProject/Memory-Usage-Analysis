@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProcesses: () => ipcRenderer.invoke('get-processes'),
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
   getProcessMemory: (pid) => ipcRenderer.invoke('get-process-memory', pid),
+  getProcessHistory: () => ipcRenderer.invoke('get-process-history'),
   refreshNow: () => ipcRenderer.invoke('refresh-now'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),

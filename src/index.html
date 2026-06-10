@@ -48,6 +48,20 @@
           </div>
         </div>
         <div class="card">
+          <div class="card-header">
+            <h2>突变进程 (相对基线)</h2>
+            <span class="hint" id="spikeHint" style="color:#999;font-size:12px">需积累样本后检测</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead>
+                <tr><th style="width:80px">PID</th><th>进程</th><th style="width:120px">当前</th><th style="width:120px">基线</th><th style="width:100px">峰值</th><th style="width:100px">变化</th></tr>
+              </thead>
+              <tbody id="spikeTbody"><tr><td colspan="6" class="empty">暂无明显突变 (≥50%)</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
           <div class="card-header"><h2>快捷操作</h2></div>
           <div class="card-body">
             <button class="btn btn-primary" data-go="processes">查看所有进程</button>
@@ -75,10 +89,11 @@
                   <th class="sortable" data-sort="name">进程名称 <span class="sort-ind"></span></th>
                   <th class="sortable" data-sort="memoryUsage" style="width:130px">内存占用 <span class="sort-ind"></span></th>
                   <th style="width:110px" title="该进程内存占系统总内存的百分比">占总%</th>
+                  <th class="sortable" data-sort="spike" style="width:90px" title="相对基线的内存变化百分比">突变%</th>
                   <th style="width:100px">状态</th>
                 </tr>
               </thead>
-              <tbody id="processTbody"><tr><td colspan="5" class="empty">加载中...</td></tr></tbody>
+              <tbody id="processTbody"><tr><td colspan="6" class="empty">加载中...</td></tr></tbody>
             </table>
           </div>
         </div>

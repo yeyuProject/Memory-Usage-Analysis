@@ -21,6 +21,8 @@ let processCache = [];
 let systemCache = null;
 let refreshInterval = null;
 let isCollecting = false;
+let processHistory = new Map();   // pid -> { baseline, peak, peakTime, samples[] }
+const MAX_SAMPLES = 60;            // 2s interval × 60 = 2 minutes of history
 
 const COLLECTOR_SCRIPT = `
 $procs = Get-Process | Where-Object { $_.Id -gt 0 } | ForEach-Object {
@@ -49,6 +51,28 @@ async function collectData() {
       processCache = data.processes
         .map(p => ({ pid: p.pid, name: p.name, memoryUsage: p.memory || 0 }))
         .sort((a, b) => b.memoryUsage - a.memoryUsage);
+
+      // Update per-process history for spike detection.
+      // History only tracks the most recent MAX_SAMPLES samples (~2 min @ 2s interval).
+      const now = Date.now();
+      const currentPids = new Set(processCache.map(p => p.pid));
+      processCache.forEach(p => {
+        let h = processHistory.get(p.pid);
+        if (!h) {
+          h = { baseline: p.memoryUsage, peak: p.memoryUsage, peakTime: now, samples: [] };
+          processHistory.set(p.pid, h);
+        }
+        h.samples.push(p.memoryUsage);
+        if (h.samples.length > MAX_SAMPLES) h.samples.shift();
+        // Baseline: min of first 5 samples (initialization phase)
+        if (h.samples.length <= 5) h.baseline = Math.min(...h.samples);
+        // Peak tracking
+        if (p.memoryUsage > h.peak) { h.peak = p.memoryUsage; h.peakTime = now; }
+      });
+      // Evict history for processes that have exited to bound memory
+      for (const pid of processHistory.keys()) {
+        if (!currentPids.has(pid)) processHistory.delete(pid);
+      }
     }
     if (data && data.system) {
       systemCache = {
@@ -97,6 +121,28 @@ function createWindow() {
 
 ipcMain.handle('get-processes', () => processCache);
 ipcMain.handle('get-system-info', () => systemCache);
+
+// Returns spike analysis for each cached process: { baseline, peak, peakTime, spikePercent, sampleCount }
+// spikePercent = ((current - baseline) / baseline) * 100, or 0 if baseline is 0
+ipcMain.handle('get-process-history', () => {
+  const result = {};
+  for (const [pid, h] of processHistory) {
+    const p = processCache.find(x => x.pid === pid);
+    const current = p ? p.memoryUsage : 0;
+    const spikePct = h.baseline > 0
+      ? Math.round(((current - h.baseline) / h.baseline) * 100)
+      : 0;
+    result[pid] = {
+      baseline: h.baseline,
+      peak: h.peak,
+      peakTime: h.peakTime,
+      current,
+      spikePercent: spikePct,
+      sampleCount: h.samples.length,
+    };
+  }
+  return result;
+});
 ipcMain.handle('get-process-memory', (_e, pid) => {
   // Defensive: reject invalid pids before they cause a crash
   if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
