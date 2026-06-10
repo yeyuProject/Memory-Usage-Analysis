@@ -28,7 +28,9 @@ let processHistory = new Map();   // pid -> { baseline, peak, peakTime, samples[
 let refreshInterval = null;
 let isCollecting = false;
 
-const MAX_SAMPLES = 60;            // 2s interval × 60 = 2 minutes of history
+const MAX_SAMPLES = 60;            // history window length (samples)
+const COLLECT_INTERVAL_MS = 2000;  // collector tick interval; matches renderer REFRESH_INTERVAL_MS
+const HISTORY_WINDOW_MS = MAX_SAMPLES * COLLECT_INTERVAL_MS;
 
 // ===== Memory estimation ratios (must match renderer constants) =====
 const MEM_RATIOS = {
@@ -134,12 +136,11 @@ async function collectData() {
 
 /**
  * Start the periodic collector. Fires one immediate collect() then
- * schedules collectData() every 2000ms (matches the renderer refresh
- * interval for clean UX). Idempotent — does nothing if already running.
+ * schedules collectData() every COLLECT_INTERVAL_MS. Idempotent.
  */
 function startCollector() {
   collectData();
-  refreshInterval = setInterval(collectData, 2000);
+  refreshInterval = setInterval(collectData, COLLECT_INTERVAL_MS);
 }
 
 /**
