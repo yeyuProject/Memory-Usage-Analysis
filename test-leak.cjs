@@ -2,30 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-let passed = 0, failed = 0;
-const results = [];
-
-function test(name, fn) {
-  return Promise.resolve()
-    .then(() => fn())
-    .then(result => {
-      if (result === false) throw new Error('Test returned false');
-      console.log(`  [PASS] ${name}`);
-      passed++;
-      results.push({ name, status: 'PASS' });
-    })
-    .catch(err => {
-      console.log(`  [FAIL] ${name}: ${err.message}`);
-      failed++;
-      results.push({ name, status: 'FAIL', error: err.message });
-    });
-}
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg || 'assertion failed');
-}
-function assertEq(actual, expected, msg) {
-  if (actual !== expected) throw new Error(`${msg || 'eq'}: expected ${expected}, got ${actual}`);
-}
+const { test, assert, assertEq, passed, failed, results } = require('./test-helpers.cjs');
 
 // Replicate computeLeakPercent from electron/main.cjs (verbatim)
 function computeLeakPercent(samples) {
