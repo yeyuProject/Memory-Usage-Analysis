@@ -57,6 +57,7 @@ const els = {
   exportBtn: $('exportBtn'),
   exportPreview: $('exportPreview'),
   snapshotBtn: $('snapshotBtn'),
+  copyTop50Btn: $('copyTop50Btn'),
   spikeTbody: $('spikeTbody'),
   spikeHint: $('spikeHint'),
   leakTbody: $('leakTbody'),
@@ -868,6 +869,56 @@ async function exportHistorySnapshot() {
   }
 }
 
+// Copy the top-50 processes (by memory) to the system clipboard as CSV.
+// Use case: paste into chat/ticket/issue tracker without saving a file first.
+// Also includes a system memory summary line at the top for context.
+async function copyTop50ToClipboard() {
+  if (!allProcesses || allProcesses.length === 0) {
+    showToast('暂无进程数据可复制', 'warn');
+    return;
+  }
+  // Top-50 by memoryUsage (descending). allProcesses is already sorted desc.
+  const top = allProcesses.slice(0, 50);
+  const cols = ['rank', 'pid', 'name', 'memoryMB', 'percentOfTotal'];
+  const csvEscape = v => {
+    const s = String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+  const totalMem = systemCache ? systemCache.totalPhysicalMemory : 1;
+  const lines = [cols.join(',')];
+  top.forEach((p, i) => {
+    lines.push([
+      i + 1,
+      p.pid,
+      csvEscape(p.name),
+      (p.memoryUsage / 1024 / 1024).toFixed(1),
+      ((p.memoryUsage / totalMem) * 100).toFixed(2),
+    ].join(','));
+  });
+  // System memory summary (commented lines for context)
+  const summary = [
+    `# Top ${top.length} of ${allProcesses.length} processes by memory`,
+    `# System total: ${(totalMem / 1024 / 1024 / 1024).toFixed(1)} GB`,
+    `# System used: ${systemCache ? ((totalMem - systemCache.availablePhysicalMemory) / 1024 / 1024 / 1024).toFixed(1) : '?'} GB`,
+    `# Generated: ${new Date().toISOString()}`,
+  ].join('\n');
+  const csv = summary + '\n' + lines.join('\n');
+
+  // Use main process IPC for reliable clipboard write (avoids browser permission
+  // prompts and works even when the window doesn't have focus).
+  const result = await window.electronAPI.writeClipboard(csv);
+  if (result.success) {
+    showToast(`已复制 Top ${top.length} 进程到剪贴板 (${(csv.length / 1024).toFixed(1)} KB)`, 'info');
+    els.exportPreview.className = '';
+    els.exportPreview.innerHTML = `<b>已复制 Top ${top.length} 到剪贴板</b><br>格式: CSV (含系统内存摘要)<br>大小: ${(csv.length / 1024).toFixed(1)} KB<br>时间: ${new Date().toLocaleString()}`;
+  } else {
+    showToast('复制失败: ' + (result.error || '未知错误'), 'error');
+  }
+}
+
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
@@ -1044,6 +1095,7 @@ els.ruleTbody.addEventListener('click', (e) => {
 els.chartProcess.addEventListener('change', renderChartPage);
 els.exportBtn.addEventListener('click', exportReport);
 els.snapshotBtn.addEventListener('click', exportHistorySnapshot);
+els.copyTop50Btn.addEventListener('click', copyTop50ToClipboard);
 
 refresh();
 refreshTimer = setInterval(refresh, 2000);
