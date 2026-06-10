@@ -116,63 +116,81 @@ function renderProcessRow(p, hl, totalMem) {
  * called every REFRESH_INTERVAL_MS while visible.
  */
 function renderTable() {
-  let matched = getFilteredProcesses();
+  const matched = getFilteredProcesses();
   const term = el('searchInput').value.trim();
+  updateSearchUI(term, matched.length);
+  if (matched.length === 0) {
+    renderEmptyTable();
+    return;
+  }
+  sortProcessesIfChanged(matched);
+  renderTableRows(matched, term);
+  updateSortIndicatorsIfDirty();
+}
 
-  // Update search UI
+/** Show the clear button and the "X / Y" match counter. */
+function updateSearchUI(term, matchedCount) {
   const clearBtn = el('searchClear');
   const matchCount = el('searchMatchCount');
+  const total = state.allProcesses.length;
   if (clearBtn) clearBtn.style.display = term ? 'inline-block' : 'none';
   if (matchCount) {
     if (term) {
-      matchCount.textContent = matched.length + ' / ' + state.allProcesses.length;
-      matchCount.style.color = matched.length === 0 ? COLORS.DANGER : COLORS.PRIMARY;
+      matchCount.textContent = matchedCount + ' / ' + total;
+      matchCount.style.color = matchedCount === 0 ? COLORS.DANGER : COLORS.PRIMARY;
     } else {
-      matchCount.textContent = state.allProcesses.length > 0 ? '共 ' + state.allProcesses.length + ' 个' : '';
+      matchCount.textContent = total > 0 ? '共 ' + total + ' 个' : '';
     }
   }
+}
 
-  if (matched.length === 0) {
-    el('tbody').innerHTML = '<tr><td colspan="6" class="empty">' +
-      (state.allProcesses.length === 0 ? '暂无数据' : '无匹配结果') + '</td></tr>';
-    return;
-  }
+/** Render the "暂无数据" / "无匹配结果" empty-state row. */
+function renderEmptyTable() {
+  const msg = state.allProcesses.length === 0 ? '暂无数据' : '无匹配结果';
+  el('tbody').innerHTML = '<tr><td colspan="6" class="empty">' + msg + '</td></tr>';
+}
 
-  // Sort (mutate in-place; skip if unchanged since allProcesses is already
-  // sorted desc by memoryUsage from main.cjs).
+/** Sort the matched array in place; skip work if sort key/dir unchanged. */
+function sortProcessesIfChanged(matched) {
   const sortKey = state.sortKey;
   const sortDir = state.sortDir;
-  if (state._lastSortKey !== sortKey || state._lastSortDir !== sortDir) {
-    matched.sort((a, b) => {
-      const va = a[sortKey], vb = b[sortKey];
-      if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-      return sortDir === 'asc' ? va - vb : vb - va;
-    });
-    state._lastSortKey = sortKey;
-    state._lastSortDir = sortDir;
-    state._sortIndicatorsDirty = true;
-  }
-  const slice = matched.slice(0, PROCESS_TABLE_LIMIT);
+  if (state._lastSortKey === sortKey && state._lastSortDir === sortDir) return;
+  matched.sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortDir === 'asc' ? va - vb : vb - va;
+  });
+  state._lastSortKey = sortKey;
+  state._lastSortDir = sortDir;
+  state._sortIndicatorsDirty = true;
+}
 
+/** Render the top-N rows + the "仅显示前 N 个" overflow footer row. */
+function renderTableRows(matched, term) {
+  const slice = matched.slice(0, PROCESS_TABLE_LIMIT);
   const re = term ? getHighlightRe(term) : null;
   const hl = s => highlight(s, re);
   const totalMem = state.sysTotalCache || 1;
-
   el('tbody').innerHTML = slice.map(p => renderProcessRow(p, hl, totalMem)).join('');
   if (matched.length > PROCESS_TABLE_LIMIT) {
     el('tbody').insertAdjacentHTML('beforeend',
       '<tr><td colspan="6" class="empty">仅显示前' + PROCESS_TABLE_LIMIT + '个，共 ' +
       matched.length + ' 个匹配</td></tr>');
   }
-  if (state._sortIndicatorsDirty) {
-    document.querySelectorAll('th.sortable').forEach(th => {
-      th.classList.remove('sort-asc', 'sort-desc');
-      if (th.dataset.sort === sortKey) {
-        th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-      }
-    });
-    state._sortIndicatorsDirty = false;
-  }
+}
+
+/** Update the up/down chevron indicators on sortable column headers. */
+function updateSortIndicatorsIfDirty() {
+  if (!state._sortIndicatorsDirty) return;
+  const sortKey = state.sortKey;
+  const sortDir = state.sortDir;
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === sortKey) {
+      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+  state._sortIndicatorsDirty = false;
 }
 
 /**

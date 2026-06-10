@@ -68,4 +68,18 @@ function setStatus(msg) {
   if (s) s.textContent = msg;
 }
 
-module.exports = { $, el, formatBytes, formatShort, escapeHtml, showToast, setStatus };
+/**
+ * Set transient text on an element that auto-clears after a delay.
+ * Used by the config save/reset buttons to show "已保存 ✓" then clear.
+ * @param {string} id - element id
+ * @param {string} text - text to show
+ * @param {number} ms - how long to show before clearing (default 2000)
+ */
+function setTransientText(id, text, ms = 2000) {
+  const node = el(id);
+  if (!node) return;
+  node.textContent = text;
+  setTimeout(() => { node.textContent = ''; }, ms);
+}
+
+module.exports = { $, el, formatBytes, formatShort, escapeHtml, showToast, setStatus, setTransientText };

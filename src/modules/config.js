@@ -4,7 +4,7 @@
 // back to disk via IPC.
 
 const state = require('./state');
-const { el, showToast } = require('./utils');
+const { el, showToast, setTransientText } = require('./utils');
 const processTable = require('./process-table');
 const { latencyColor } = require('./theme');
 
@@ -54,11 +54,7 @@ async function saveConfigFromUI() {
   const result = await state.api.setConfig(patch);
   if (result.ok) {
     applyConfig(result.config);
-    const status = el('cfgStatus');
-    if (status) {
-      status.textContent = '已保存 ✓';
-      setTimeout(() => { status.textContent = ''; }, 2000);
-    }
+    setTransientText('cfgStatus', '已保存 ✓');
     showToast('设置已保存', 'info');
   } else {
     const status = el('cfgStatus');
@@ -77,11 +73,7 @@ async function resetConfig() {
   const result = await state.api.resetConfig();
   if (result.ok) {
     applyConfig(result.config);
-    const status = el('cfgStatus');
-    if (status) {
-      status.textContent = '已恢复默认 ✓';
-      setTimeout(() => { status.textContent = ''; }, 2000);
-    }
+    setTransientText('cfgStatus', '已恢复默认 ✓');
     showToast('已恢复默认设置', 'info');
   }
 }
