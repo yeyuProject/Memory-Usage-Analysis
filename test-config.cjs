@@ -299,12 +299,14 @@ const TMP = path.join(os.tmpdir(), 'mua-config-test-' + Date.now());
   });
   const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
   await test('renderer 不再有 const SPIKE_THRESHOLD (改为 let)', () => {
-    assert(!/const\s+SPIKE_THRESHOLD/.test(renderer), 'should be let, not const');
-    assert(/let\s+SPIKE_THRESHOLD/.test(renderer));
+    // After refactor: SPIKE_THRESHOLD_DEFAULT exists as const (default value),
+    // but the mutable binding is let.
+    assert(!/const\s+SPIKE_THRESHOLD\b/.test(renderer), 'should be let, not const');
+    assert(/let\s+SPIKE_THRESHOLD\b/.test(renderer));
   });
   await test('renderer 不再有 const LEAK_THRESHOLD', () => {
-    assert(!/const\s+LEAK_THRESHOLD/.test(renderer));
-    assert(/let\s+LEAK_THRESHOLD/.test(renderer));
+    assert(!/const\s+LEAK_THRESHOLD\b/.test(renderer));
+    assert(/let\s+LEAK_THRESHOLD\b/.test(renderer));
   });
   await test('renderer 包含 loadConfig 函数', () => {
     assert(/async function loadConfig/.test(renderer));

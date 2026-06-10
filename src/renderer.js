@@ -92,6 +92,54 @@ let isDrawing = false;         // reentrancy guard for chart drawing
 let sortKey = 'memoryUsage';  // current sort column
 let sortDir = 'desc';         // 'asc' | 'desc'
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+//
+// Magic numbers extracted into named constants so the intent is obvious and
+// changes happen in one place. UI thresholds (spike/leak) are loaded from
+// user config (see applyConfig()) but defaults live here.
+
+// Spike detection: a process's current memory must deviate from its running
+// baseline by >= this many percent to be flagged as a "spike". Also requires
+// at least SPIKE_MIN_SAMPLES samples to establish a meaningful baseline.
+const SPIKE_THRESHOLD_DEFAULT = 50;
+const SPIKE_MIN_SAMPLES = 5;
+const SPIKE_HOT_THRESHOLD = 50;     // >= : red
+const SPIKE_WARM_THRESHOLD = 20;    // >= : orange
+const SPIKE_COOL_THRESHOLD = -20;   // <= : green (memory released)
+
+// Leak detection: a process's linear-regression slope-per-window must exceed
+// this percent to be flagged as a "leak". Requires LEAK_MIN_SAMPLES for the
+// slope to be statistically meaningful.
+const LEAK_THRESHOLD_DEFAULT = 30;
+const LEAK_MIN_SAMPLES = 10;
+
+// Display limits: how many rows to show in each table. Beyond these counts we
+// either paginate (main process table) or just show top-N (spike/leak).
+const PROCESS_TABLE_LIMIT = 200;
+const DASHBOARD_LIMIT = 10;
+
+// Refresh cadence: must match main process collector interval for clean UX.
+const REFRESH_INTERVAL_MS = 2000;
+
+// Theme colors reused across the app. Keep in sync with styles.css.
+const COLORS = {
+  SPIKE_HOT:  '#ff4d4f',
+  SPIKE_WARM: '#faad14',
+  SPIKE_COOL: '#52c41a',
+  TEXT_DIM:   '#999',
+  TEXT_MUTED: '#666',
+  PRIMARY:    '#1890ff',
+  SUCCESS:    '#52c41a',
+  DANGER:     '#ff4d4f',
+  WARNING:    '#faad14',
+};
+
+// Mutable thresholds (mutated by applyConfig() when user changes settings).
+let SPIKE_THRESHOLD = SPIKE_THRESHOLD_DEFAULT;
+let LEAK_THRESHOLD  = LEAK_THRESHOLD_DEFAULT;
+
 function formatBytes(b) {
   if (!b || b <= 0) return '0 B';
   const k = 1024, u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -366,10 +414,18 @@ function redrawAxesLine(ctx, w, h, left, right) {
   ctx.stroke();
 }
 
+/**
+ * Main refresh loop. Polls the main process for current system + process state,
+ * then re-renders all UI panels. Guarded against reentrancy (a slow IPC response
+ * must not trigger a second concurrent refresh).
+ *
+ * @returns {Promise<void>}
+ */
 async function refresh() {
   if (isRefreshing) return; // prevent reentrancy
   isRefreshing = true;
   try {
+    // Fetch all data in parallel — these IPC calls are independent.
     const [sys, procs, history] = await Promise.all([
       api.getSystemInfo(),
       api.getProcesses(),
@@ -410,35 +466,68 @@ function renderSystem(sys) {
   els.procCount.textContent = allProcesses.length;
 }
 
-// Smart process name matching. Supports:
+// Smart process name matching. Pre-compiles the term into a matcher closure
+// that runs in O(orParts) per process instead of re-parsing the term string
+// for every process on every render.
+//
+// Supports:
 //   "chrome"        - substring match (default, backward compatible)
 //   "chrome*"       - prefix match (must start with "chrome")
 //   "chrome;code"   - OR match (any of the terms matches)
 //   "chrome*;code"  - prefix + OR combined
 // Matching is case-insensitive and also checks PID as a string.
-function matchProcessSearch(term, p) {
-  if (!term) return true;
-  const name = p.name.toLowerCase();
-  const pidStr = String(p.pid);
-  // Split on ';' for OR. Empty fragments are ignored.
+/**
+ * Smart process name matcher (pre-compiled). Splits the term on ';' for OR,
+ * normalizes each part once, then returns a closure that runs in O(orParts)
+ * per process instead of re-parsing the term for every process on every render.
+ *
+ * Supports:
+ *   "chrome"        - substring match (default, backward compatible)
+ *   "chrome*"       - prefix match (must start with "chrome")
+ *   "chrome;code"   - OR match (any of the terms matches)
+ *   "chrome*;code"  - prefix + OR combined
+ *
+ * @param {string} term - raw search term from the input box (already lowercased)
+ * @returns {((p:object)=>boolean)|null} matcher closure, or null if term is empty
+ */
+function compileSearchMatcher(term) {
+  if (!term) return null;
   const orParts = term.split(';').map(s => s.trim()).filter(Boolean);
-  // A process matches if ANY of the OR parts matches.
-  return orParts.some(part => {
+  if (orParts.length === 0) return null;
+  // Pre-normalize each part so the per-process hot path is just comparisons.
+  const compiled = orParts.map(part => {
     if (part.endsWith('*')) {
-      // Prefix match: must start with the part (without the trailing *)
-      const prefix = part.slice(0, -1);
-      return name.startsWith(prefix) || pidStr.startsWith(prefix);
+      return { kind: 'prefix', value: part.slice(0, -1) };
     }
-    // Substring match (existing behavior)
-    return name.includes(part) || pidStr.includes(part);
+    return { kind: 'substring', value: part };
   });
+  return (p) => {
+    const name = p.name.toLowerCase();
+    const pidStr = String(p.pid);
+    for (let i = 0; i < compiled.length; i++) {
+      const c = compiled[i];
+      if (c.kind === 'prefix') {
+        if (name.startsWith(c.value) || pidStr.startsWith(c.value)) return true;
+      } else {
+        if (name.includes(c.value) || pidStr.includes(c.value)) return true;
+      }
+    }
+    return false;
+  };
 }
 
+/**
+ * Apply the search box and filter criteria to produce the final process list
+ * for the main table. Filters are applied in order from cheapest to most
+ * selective: search -> PID whitelist -> min mem -> max mem.
+ *
+ * @returns {Array<object>} filtered process list (same shape as allProcesses)
+ */
 function getFilteredProcesses() {
   let list = allProcesses;
-  const term = els.searchInput.value.trim().toLowerCase();
-  if (term) {
-    list = list.filter(p => matchProcessSearch(term, p));
+  const matcher = compileSearchMatcher(els.searchInput.value.trim().toLowerCase());
+  if (matcher) {
+    list = list.filter(matcher);
   }
   if (filterCriteria.processIds.length > 0) {
     list = list.filter(p => filterCriteria.processIds.includes(p.pid));
@@ -452,6 +541,34 @@ function getFilteredProcesses() {
   return list;
 }
 
+// Render the process table. Optimizations vs. the original:
+// 1. Cache processHistory lookup once per row (was 3x per row).
+// 2. Skip the `{...p, spike}` spread — just use local variables.
+// 3. Pre-compute shared values (sysTotalCache, isSelected) outside the loop.
+// 4. Cache the highlight RegExp by term (rebuild only when term changes).
+// 5. Skip the highlight pass when there's no term.
+// 6. Only update sort indicators if sortKey/sortDir actually changed.
+let _cachedHlTerm = null;
+let _cachedHlRe = null;
+let _lastSortKey = null;
+let _lastSortDir = null;
+let _sortIndicatorsDirty = true;
+function getHighlightRe(term) {
+  if (!term) return null;
+  if (term === _cachedHlTerm) return _cachedHlRe;
+  const escTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  _cachedHlRe = new RegExp('(' + escTerm + ')', 'gi');
+  _cachedHlTerm = term;
+  return _cachedHlRe;
+}
+
+/**
+ * Render the main process table (Dashboard / Processes tab). Reads the
+ * current search input, applies user sort, builds HTML rows, updates the
+ * match-count indicator, and refreshes sort column indicators.
+ *
+ * Hot path: called every REFRESH_INTERVAL_MS while the tab is visible.
+ */
 function renderTable() {
   let matched = getFilteredProcesses();
   // Update search UI: match count and clear button visibility
@@ -469,57 +586,94 @@ function renderTable() {
     els.tbody.innerHTML = `<tr><td colspan="6" class="empty">${allProcesses.length === 0 ? '暂无数据' : '无匹配结果'}</td></tr>`;
     return;
   }
-  // Enrich with computed spike value (from processHistory)
-  const enriched = matched.map(p => ({
-    ...p,
-    spike: (processHistory[p.pid] && processHistory[p.pid].spikePercent) || 0,
-  }));
-  // Apply user-selected sort
-  enriched.sort((a, b) => {
-    const va = a[sortKey], vb = b[sortKey];
-    if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(vb);
-    return sortDir === 'asc' ? va - vb : vb - va;
-  });
-  const slice = enriched.slice(0, 200);
-  // Highlight matched search term in the name (and pid) cells.
-  // Uses <mark class="search-hl"> for visual emphasis. Escapes regex metachars.
-  const escTerm = term ? term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
-  const re = term ? new RegExp('(' + escTerm + ')', 'gi') : null;
+
+  // Apply user-selected sort. We mutate in-place to avoid the spread + new array.
+  // sortKey/sortDir are module-level state; if unchanged, we can skip re-sorting
+  // because allProcesses is already sorted desc by memoryUsage from main.cjs.
+  if (_lastSortKey !== sortKey || _lastSortDir !== sortDir) {
+    matched.sort((a, b) => {
+      const va = a[sortKey], vb = b[sortKey];
+      if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+      return sortDir === 'asc' ? va - vb : vb - va;
+    });
+    _lastSortKey = sortKey;
+    _lastSortDir = sortDir;
+    _sortIndicatorsDirty = true;
+  }
+  const slice = matched.slice(0, PROCESS_TABLE_LIMIT);
+
+  // Cache RegExp by term — rebuilt only when term changes.
+  const re = term ? getHighlightRe(term) : null;
   const hl = s => {
-    if (!re || !s) return escapeHtml(String(s));
+    if (!re || s == null) return escapeHtml(String(s));
     return escapeHtml(String(s)).replace(re, '<mark class="search-hl">$1</mark>');
   };
-  els.tbody.innerHTML = slice.map(p => {
-    const spike = processHistory[p.pid]?.spikePercent ?? 0;
-    // Only show spike after we have enough samples to establish a baseline (>5)
-    const sampleCount = processHistory[p.pid]?.sampleCount ?? 0;
-    const showSpike = sampleCount > 5;
-    let spikeCell = '<span style="color:#999">--</span>';
-    if (showSpike) {
-      if (spike >= 50) spikeCell = `<span style="color:#ff4d4f;font-weight:600">↑${spike}%</span>`;
-      else if (spike >= 20) spikeCell = `<span style="color:#faad14">↑${spike}%</span>`;
-      else if (spike <= -20) spikeCell = `<span style="color:#52c41a">↓${Math.abs(spike)}%</span>`;
-      else spikeCell = `<span style="color:#999">${spike >= 0 ? '+' : ''}${spike}%</span>`;
-    }
-    return `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
-      <td>${hl(p.pid)}</td>
-      <td>${hl(p.name)}</td>
-      <td>${formatBytes(p.memoryUsage)}</td>
-      <td>${((p.memoryUsage / sysTotalCache) * 100).toFixed(2)}%</td>
-      <td>${spikeCell}</td>
-      <td>${selectedPid === p.pid ? '<span style="color:#52c41a;font-weight:500">已选择</span>' : '<span style="color:#999">运行中</span>'}</td>
-    </tr>`;
-  }).join('');
-  if (matched.length > 200) {
+
+  // Pre-compute once outside the loop.
+  const totalMem = sysTotalCache || 1;
+  const isSelected = p => selectedPid === p.pid;
+
+  els.tbody.innerHTML = slice.map(p => renderProcessRow(p, hl, totalMem)).join('');
+  if (matched.length > PROCESS_TABLE_LIMIT) {
     els.tbody.insertAdjacentHTML('beforeend', `<tr><td colspan="6" class="empty">仅显示前200个，共 ${matched.length} 个匹配</td></tr>`);
   }
-  // Update sort indicators
-  document.querySelectorAll('th.sortable').forEach(th => {
-    th.classList.remove('sort-asc', 'sort-desc');
-    if (th.dataset.sort === sortKey) {
-      th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
-    }
-  });
+  // Update sort indicators only when sort state changes.
+  if (_sortIndicatorsDirty) {
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.classList.remove('sort-asc', 'sort-desc');
+      if (th.dataset.sort === sortKey) {
+        th.classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+      }
+    });
+    _sortIndicatorsDirty = false;
+  }
+}
+
+// ============================================================================
+// RENDER HELPERS — small, pure functions that build HTML strings for table rows.
+// Extracted from renderTable/renderSpikes/renderLeaks to avoid duplication.
+// ============================================================================
+
+/**
+ * Build the inline-colored spike-percentage cell used in the main process table.
+ * Returns "--" (dim) if there aren't enough samples to establish a baseline.
+ *
+ * @param {number} spike - spikePercent from process history
+ * @param {number} sampleCount - number of samples collected so far
+ * @returns {string} HTML span
+ */
+function renderSpikeCell(spike, sampleCount) {
+  if (sampleCount <= SPIKE_MIN_SAMPLES) {
+    return '<span style="color:#999">--</span>';
+  }
+  if (spike >= SPIKE_HOT_THRESHOLD) {
+    return `<span style="color:${COLORS.SPIKE_HOT};font-weight:600">↑${spike}%</span>`;
+  }
+  if (spike >= SPIKE_WARM_THRESHOLD) {
+    return `<span style="color:${COLORS.SPIKE_WARM}">↑${spike}%</span>`;
+  }
+  if (spike <= SPIKE_COOL_THRESHOLD) {
+    return `<span style="color:${COLORS.SPIKE_COOL}">↓${-spike}%</span>`;
+  }
+  return `<span style="color:${COLORS.TEXT_DIM}">${spike >= 0 ? '+' : ''}${spike}%</span>`;
+}
+
+/**
+ * Build a single <tr> for the main process table. Single history lookup per row.
+ *
+ * @param {object} p - process row {pid, name, memoryUsage}
+ * @param {(s:any)=>string} hl - highlight function for escaping + mark insertion
+ * @param {number} totalMem - denominator for percent calculation
+ * @returns {string} HTML <tr>
+ */
+function renderProcessRow(p, hl, totalMem) {
+  const h = processHistory[p.pid];
+  const spikeCell = renderSpikeCell(h ? h.spikePercent : 0, h ? h.sampleCount : 0);
+  const selCls = selectedPid === p.pid ? ' class="selected"' : '';
+  const statusCell = selectedPid === p.pid
+    ? `<span style="color:${COLORS.SUCCESS};font-weight:500">已选择</span>`
+    : `<span style="color:${COLORS.TEXT_DIM}">运行中</span>`;
+  return `<tr data-pid="${p.pid}"${selCls}><td>${hl(p.pid)}</td><td>${hl(p.name)}</td><td>${formatBytes(p.memoryUsage)}</td><td>${((p.memoryUsage / totalMem) * 100).toFixed(2)}%</td><td>${spikeCell}</td><td>${statusCell}</td></tr>`;
 }
 
 function renderDashCharts() {
@@ -534,43 +688,45 @@ function renderDashCharts() {
 
 // Spike detection: surface processes whose current memory deviates >= configured
 // threshold from their running baseline. Threshold is loaded from user config.
-// Sample count must be > 5 to establish a meaningful baseline.
-let SPIKE_THRESHOLD = 50;        // mutated by applyConfig()
+// Sample count must be > SPIKE_MIN_SAMPLES to establish a meaningful baseline.
 
 function renderSpikes() {
+  // Optimization: single pass over allProcesses collects both spikes AND
+  // total sample count (was two passes before).
   const spikes = [];
+  let totalSamples = 0;
   for (const p of allProcesses) {
     const h = processHistory[p.pid];
-    if (!h || h.sampleCount <= 5) continue;
+    if (!h) continue;
+    totalSamples += h.sampleCount;
+    if (h.sampleCount <= SPIKE_MIN_SAMPLES) continue;
     if (Math.abs(h.spikePercent) >= SPIKE_THRESHOLD) {
-      spikes.push({ ...p, history: h });
+      spikes.push({ pid: p.pid, name: p.name, h });
     }
   }
   // Sort by absolute spike, biggest first
-  spikes.sort((a, b) => Math.abs(b.history.spikePercent) - Math.abs(a.history.spikePercent));
+  spikes.sort((a, b) => Math.abs(b.h.spikePercent) - Math.abs(a.h.spikePercent));
 
-  const totalSamples = allProcesses.reduce((s, p) => {
-    const h = processHistory[p.pid];
-    return s + (h ? h.sampleCount : 0);
-  }, 0);
   const avgSamples = allProcesses.length ? Math.floor(totalSamples / allProcesses.length) : 0;
   els.spikeHint.textContent = `需积累样本后检测 (当前平均 ${avgSamples} 个/进程, 阈值 ${SPIKE_THRESHOLD}%)`;
 
   if (spikes.length === 0) {
-    els.spikeTbody.innerHTML = `<tr><td colspan="6" class="empty">${avgSamples < 6 ? '样本不足 (需>5个)' : '暂无明显突变 (≥50%)'}</td></tr>`;
+    const emptyMsg = avgSamples < SPIKE_MIN_SAMPLES + 1
+      ? `样本不足 (需>${SPIKE_MIN_SAMPLES}个)`
+      : `暂无明显突变 (≥${SPIKE_THRESHOLD}%)`;
+    els.spikeTbody.innerHTML = `<tr><td colspan="6" class="empty">${emptyMsg}</td></tr>`;
     return;
   }
-  els.spikeTbody.innerHTML = spikes.slice(0, 10).map(s => {
-    const pct = s.history.spikePercent;
-    const color = pct >= 50 ? '#ff4d4f' : '#faad14';
+  els.spikeTbody.innerHTML = spikes.slice(0, DASHBOARD_LIMIT).map(s => {
+    const pct = s.h.spikePercent;
     const arrow = pct >= 0 ? '↑' : '↓';
     return `<tr data-pid="${s.pid}" style="cursor:pointer">
       <td>${s.pid}</td>
       <td>${escapeHtml(s.name)}</td>
-      <td>${formatBytes(s.history.current)}</td>
-      <td style="color:#999">${formatBytes(s.history.baseline)}</td>
-      <td style="color:#faad14">${formatBytes(s.history.peak)}</td>
-      <td style="color:${color};font-weight:600">${arrow}${Math.abs(pct)}%</td>
+      <td>${formatBytes(s.h.current)}</td>
+      <td style="color:#999">${formatBytes(s.h.baseline)}</td>
+      <td style="color:#faad14">${formatBytes(s.h.peak)}</td>
+      <td style="color:#ff4d4f;font-weight:600">${arrow}${Math.abs(pct)}%</td>
     </tr>`;
   }).join('');
 }
@@ -578,31 +734,30 @@ function renderSpikes() {
 // Leak detection: a process with a sustained upward trend over the sample window.
 // Threshold: leakPercent >= configured value (i.e., memory growing at >= threshold
 // of baseline per window). Default 30, loaded from user config.
-let LEAK_THRESHOLD = 30;         // mutated by applyConfig()
 
 function renderLeaks() {
   const leaks = [];
   for (const p of allProcesses) {
     const h = processHistory[p.pid];
-    if (!h || h.sampleCount < 10) continue; // need enough samples for slope
+    if (!h || h.sampleCount < LEAK_MIN_SAMPLES) continue;
     if (h.leakPercent >= LEAK_THRESHOLD) {
-      leaks.push({ ...p, history: h });
+      leaks.push({ pid: p.pid, name: p.name, h });
     }
   }
   // Sort by steepest leak first
-  leaks.sort((a, b) => b.history.leakPercent - a.history.leakPercent);
+  leaks.sort((a, b) => b.h.leakPercent - a.h.leakPercent);
 
   if (leaks.length === 0) {
-    els.leakTbody.innerHTML = `<tr><td colspan="5" class="empty">暂无内存泄漏迹象 (需≥10个样本+≥${LEAK_THRESHOLD}%增长)</td></tr>`;
+    els.leakTbody.innerHTML = `<tr><td colspan="5" class="empty">暂无内存泄漏迹象 (需≥${LEAK_MIN_SAMPLES}个样本+≥${LEAK_THRESHOLD}%增长)</td></tr>`;
     return;
   }
-  els.leakTbody.innerHTML = leaks.slice(0, 10).map(l => {
-    const pct = l.history.leakPercent;
+  els.leakTbody.innerHTML = leaks.slice(0, DASHBOARD_LIMIT).map(l => {
+    const pct = l.h.leakPercent;
     return `<tr data-pid="${l.pid}" style="cursor:pointer">
       <td>${l.pid}</td>
       <td>${escapeHtml(l.name)}</td>
-      <td>${formatBytes(l.history.current)}</td>
-      <td style="color:#999">${formatBytes(l.history.baseline)}</td>
+      <td>${formatBytes(l.h.current)}</td>
+      <td style="color:#999">${formatBytes(l.h.baseline)}</td>
       <td style="color:#ff4d4f;font-weight:600">↗ +${pct}%/窗</td>
     </tr>`;
   }).join('');
@@ -657,7 +812,7 @@ function showDetail(pid) {
 
 function populateFilterProcesses() {
   const current = new Set(Array.from(els.filterProcess.selectedOptions).map(o => Number(o.value)));
-  els.filterProcess.innerHTML = allProcesses.slice(0, 200).map(p =>
+  els.filterProcess.innerHTML = allProcesses.slice(0, PROCESS_TABLE_LIMIT).map(p =>
     `<option value="${p.pid}" ${current.has(p.pid) ? 'selected' : ''}>${escapeHtml(p.name)} (${p.pid}) - ${formatBytes(p.memoryUsage)}</option>`
   ).join('');
   const currentChart = Number(els.chartProcess.value);
@@ -1153,4 +1308,19 @@ els.snapshotBtn.addEventListener('click', exportHistorySnapshot);
 els.copyTop50Btn.addEventListener('click', copyTop50ToClipboard);
 
 refresh();
-refreshTimer = setInterval(refresh, 2000);
+refreshTimer = setInterval(refresh, REFRESH_INTERVAL_MS);
+
+// Optimization: when the window/tab is hidden (minimized, other tab focused,
+// screen locked, etc.) the user can't see updates anyway. Pausing refresh
+// saves CPU + avoids waking up the PowerShell session. On return, do one
+// immediate refresh so the UI isn't stale.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  } else {
+    if (!refreshTimer) {
+      refresh();  // immediate catch-up
+      refreshTimer = setInterval(refresh, REFRESH_INTERVAL_MS);
+    }
+  }
+});

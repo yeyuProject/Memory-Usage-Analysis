@@ -137,7 +137,9 @@ class HistoryTracker {
     assert(renderer.includes('renderSpikes()'), 'not called in refresh');
   });
   await test('4.5 - SPIKE_THRESHOLD 常量', () => {
-    assert(renderer.includes('SPIKE_THRESHOLD = 50'), 'no threshold constant');
+    // After refactor: SPIKE_THRESHOLD is a default constant + mutable let.
+    assert(/SPIKE_THRESHOLD_DEFAULT\s*=\s*50/.test(renderer), 'no default constant');
+    assert(/let\s+SPIKE_THRESHOLD/.test(renderer), 'should have mutable SPIKE_THRESHOLD');
   });
   await test('4.6 - spike 表格点击跳转', () => {
     assert(renderer.includes("els.spikeTbody.addEventListener"), 'no click handler');
