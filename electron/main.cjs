@@ -18,6 +18,7 @@ const configService = require('./services/config');
 const recordingService = require('./services/recording');
 const psSession = require('./services/ps-session');
 const windowService = require('./services/window');
+const { csvEscape } = require('./services/csv');
 
 // ===== Module-level state owned by the orchestrator =====
 // These are the "live caches" that IPC handlers return. They are populated
@@ -312,16 +313,9 @@ ipcMain.handle('export-history-snapshot', async (_e, opts) => {
       fs.writeFileSync(filePath, JSON.stringify(snapshot, null, 2) + '\n', 'utf8');
     } else {
       const cols = ['pid', 'name', 'memoryUsage', 'baseline', 'peak', 'spikePercent', 'leakPercent', 'sampleCount'];
-      const escape = v => {
-        const s = String(v);
-        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-          return '"' + s.replace(/"/g, '""') + '"';
-        }
-        return s;
-      };
       const lines = [cols.join(',')];
       rows.forEach(r => {
-        lines.push(cols.map(c => escape(r[c])).join(','));
+        lines.push(cols.map(c => csvEscape(r[c])).join(','));
       });
       const meta = [
         `# Generated: ${snapshot.generatedAt}`,

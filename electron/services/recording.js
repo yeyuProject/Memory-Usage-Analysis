@@ -20,6 +20,7 @@
 const path = require('path');
 const fs = require('fs');
 const { app, dialog } = require('electron');
+const { csvEscape } = require('./csv');
 
 const TOP_N_DEFAULT = 20;
 const JSONL_EXT = '.jsonl';
@@ -231,13 +232,6 @@ async function exportCsv(id, parentWindow) {
     const cols = ['timestamp', 'system_used', 'system_total', 'system_free'];
     for (let i = 0; i < N; i++) cols.push(`r${i}_pid`, `r${i}_name`, `r${i}_mem`);
     const rows = [cols.join(',')];
-    const csvEscape = v => {
-      const s = String(v);
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return '"' + s.replace(/"/g, '""') + '"';
-      }
-      return s;
-    };
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;

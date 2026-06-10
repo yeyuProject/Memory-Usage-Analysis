@@ -47,6 +47,21 @@ function escapeHtml(s) {
 }
 
 /**
+ * Escape a value for inclusion in a CSV cell. Wraps in double quotes and
+ * doubles internal quotes per RFC 4180 when the value contains a comma,
+ * quote, or newline. Used by the Copy-Top-50 and report-CSV paths.
+ * @param {any} v
+ * @returns {string}
+ */
+function csvEscape(v) {
+  const s = String(v);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+/**
  * Show a transient toast notification.
  * @param {string} msg
  * @param {'info'|'warn'|'error'} type
@@ -82,4 +97,4 @@ function setTransientText(id, text, ms = 2000) {
   setTimeout(() => { node.textContent = ''; }, ms);
 }
 
-module.exports = { $, el, formatBytes, formatShort, escapeHtml, showToast, setStatus, setTransientText };
+module.exports = { $, el, formatBytes, formatShort, escapeHtml, csvEscape, showToast, setStatus, setTransientText };

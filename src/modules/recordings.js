@@ -9,7 +9,7 @@
 // live counter in the footer.
 
 const state = require('./state');
-const { el, showToast, setStatus, escapeHtml, formatBytes } = require('./utils');
+const { el, showToast, setStatus, escapeHtml, csvEscape, formatBytes } = require('./utils');
 const processTable = require('./process-table');
 
 /**
@@ -145,13 +145,6 @@ async function copyTop50ToClipboard() {
     return;
   }
   const top = state.allProcesses.slice(0, 50);
-  const csvEscape = v => {
-    const s = String(v);
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-      return '"' + s.replace(/"/g, '""') + '"';
-    }
-    return s;
-  };
   const totalMem = state.systemCache ? state.systemCache.totalPhysicalMemory : 1;
   const lines = ['rank,pid,name,memoryMB,percentOfTotal'];
   top.forEach((p, i) => {
