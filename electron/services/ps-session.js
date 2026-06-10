@@ -65,6 +65,12 @@ while ($true) {
 }
 `;
 
+/**
+ * Spawn a fresh PowerShell process running the REPL bootstrap script.
+ * Wires stdout/stderr/exit handlers and replaces the module-level
+ * `session` reference. Returns the existing session if still alive.
+ * @returns {object|null} the session object, or null on spawn failure
+ */
 function startSession() {
   if (session && session.alive) return session;
   try {
@@ -114,6 +120,11 @@ function startSession() {
   }
 }
 
+/**
+ * Gracefully stop the PowerShell session. Tries `EXIT` command first
+ * (so PowerShell can flush), then force-kills after 500ms if it
+ * hasn't exited yet. Idempotent — safe to call when no session exists.
+ */
 function stop() {
   if (!session) return;
   session.alive = false;
@@ -130,11 +141,20 @@ function stop() {
   session = null;
 }
 
+/**
+ * Check if a PowerShell session is currently alive and usable.
+ * @returns {boolean}
+ */
 function isAlive() {
   return !!(session && session.alive);
 }
 
-// Diagnostic stats for status-bar display.
+/**
+ * Diagnostic stats for the status-bar display ("PS: 75ms | 请求 42").
+ * Shows request count, error count, last round-trip latency, in-flight
+ * status, and queue depth.
+ * @returns {{alive:false}|{alive:true,pid:number,...}}
+ */
 function getStats() {
   if (!session) return { alive: false };
   return {
@@ -149,6 +169,12 @@ function getStats() {
   };
 }
 
+/**
+ * stdout data handler. Accumulates chunks into a line buffer and
+ * dispatches complete lines to handleLine(). Handles partial lines
+ * that arrive across multiple data events.
+ * @param {string} chunk - stdout chunk (utf8)
+ */
 function onStdout(chunk) {
   if (!session) return;
   session.buffer += chunk;
@@ -160,8 +186,18 @@ function onStdout(chunk) {
   }
 }
 
-// State machine for one request's response:
-//   jsonAccum collects lines after a COLLECT until READY (or ERR) arrives.
+/**
+ * State machine for one request's response. Routes each output line:
+ *   'READY'        -> end of response, resolves pending promise with
+ *                      accumulated JSON (or null if empty), then drains queue
+ *   'ERR: <msg>'   -> error path, rejects pending promise
+ *   anything else  -> JSON payload line, accumulates into jsonAccum
+ *
+ * NOTE: drainQueue() is called only on READY, not ERR — PowerShell
+ * always sends ERR followed by READY in the same flush, and we don't
+ * want to fire the queued request into an empty buffer.
+ * @param {string} line - one stdout line (no trailing newline)
+ */
 function handleLine(line) {
   if (!session) return;
   if (line === PS_READY) {
@@ -198,6 +234,11 @@ function handleLine(line) {
   if (session.pending) session.jsonAccum.push(line);
 }
 
+/**
+ * Send queued collect requests while the session has no in-flight request.
+ * Called after every READY (end of response). Stops on first send so
+ * the REPL handles one request at a time.
+ */
 function drainQueue() {
   while (queue.length > 0 && session && session.alive && !session.pending) {
     const next = queue.shift();
@@ -205,6 +246,12 @@ function drainQueue() {
   }
 }
 
+/**
+ * Send one COLLECT command to the REPL and store the pending request.
+ * Resets jsonAccum so the next READY only sees this response's lines.
+ * On stdin write failure, rejects the pending promise immediately.
+ * @param {{resolve:function,reject:function}} req - queued request
+ */
 function sendRequest(req) {
   session.pending = {
     resolve: req.resolve,
@@ -221,7 +268,12 @@ function sendRequest(req) {
   }
 }
 
-// Public: request a collect. Auto-starts the session if needed.
+/**
+ * Public API: request one data collection. Auto-starts the session if
+ * needed. Concurrent callers are queued and serialized through the REPL.
+ * @returns {Promise<{processes:Array,system:{total:number,free:number}}>}
+ *   resolves with the parsed JSON payload, or null if no data
+ */
 function collect() {
   return new Promise((resolve, reject) => {
     if (!session || !session.alive) {

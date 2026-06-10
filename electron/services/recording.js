@@ -25,10 +25,18 @@ const TOP_N_DEFAULT = 20;
 
 let recordingState = null;   // { id, startTime, interval, filePath, stream, sampleCount }
 
+/**
+ * Get the absolute path to the recordings directory under userData.
+ * @returns {string}
+ */
 function getRecordingsDir() {
   return path.join(app.getPath('userData'), 'recordings');
 }
 
+/**
+ * Create the recordings directory if it doesn't already exist.
+ * @returns {string} the directory path
+ */
 function ensureRecordingsDir() {
   const dir = getRecordingsDir();
   if (!fs.existsSync(dir)) {
@@ -37,8 +45,14 @@ function ensureRecordingsDir() {
   return dir;
 }
 
-// Cheap helper: build the per-tick JSON payload and write it.
-// Called by the periodic collector (every REFRESH_INTERVAL_MS).
+/**
+ * Build the per-tick JSON payload (top-N processes + system memory) and
+ * write it to the active recording stream as one JSONL line.
+ * No-op if no recording is active.
+ * @param {number} timestamp - ms since epoch (Date.now())
+ * @param {Array<{pid:number,name:string,memoryUsage:number}>} processes
+ * @param {{totalMemory:number,usedMemory:number,freeMemory:number}} systemInfo
+ */
 function appendSample(timestamp, processes, systemInfo) {
   if (!recordingState || !recordingState.stream) return;
   try {
@@ -62,6 +76,13 @@ function appendSample(timestamp, processes, systemInfo) {
   }
 }
 
+/**
+ * Start a new recording. Writes the header line, opens the write stream,
+ * and stores state so appendSample() knows where to write.
+ * Only one recording can be active at a time.
+ * @param {{interval?:number, topN?:number}} opts - interval in ms, topN count
+ * @returns {{ok:true,id:string,filePath:string}|{ok:false,error:string}}
+ */
 function startRecording({ interval = 2000, topN = TOP_N_DEFAULT } = {}) {
   if (recordingState) {
     return { ok: false, error: '已有录制在进行中' };
@@ -87,6 +108,10 @@ function startRecording({ interval = 2000, topN = TOP_N_DEFAULT } = {}) {
   }
 }
 
+/**
+ * Stop the active recording and close the write stream.
+ * @returns {Promise<{ok:true,id:string,filePath:string,sampleCount:number}|{ok:false,error:string}>}
+ */
 function stopRecording() {
   if (!recordingState) return Promise.resolve({ ok: false, error: '当前未在录制' });
   const { id, filePath, sampleCount } = recordingState;
@@ -98,6 +123,11 @@ function stopRecording() {
   });
 }
 
+/**
+ * Return the current recording status. Used by the renderer footer to
+ * show a live counter, and by the IPC handler to mirror state across reloads.
+ * @returns {{active:false}|{active:true,id:string,startTime:number,...}}
+ */
 function getStatus() {
   if (!recordingState) return { active: false };
   return {
@@ -111,8 +141,12 @@ function getStatus() {
   };
 }
 
-// Reads header + tail from each recording file. Expensive on huge files but
-// recordings are typically small (1-2MB) so this is fine.
+/**
+ * Read header + tail of every .jsonl file in the recordings dir and return
+ * metadata items sorted newest-first. Expensive on huge files but
+ * recordings are typically small (1-2MB) so this is fine.
+ * @returns {Array<{id:string,filePath:string,startTime:number,...}>}
+ */
 function listRecordings() {
   const dir = ensureRecordingsDir();
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.jsonl'));
@@ -151,6 +185,11 @@ function listRecordings() {
   return items;
 }
 
+/**
+ * Delete a recording file from disk.
+ * @param {string} id - recording id (matches {id}.jsonl filename)
+ * @returns {{ok:true}|{ok:false,error:string}}
+ */
 function deleteRecording(id) {
   const filePath = path.join(getRecordingsDir(), id + '.jsonl');
   try {
@@ -164,8 +203,16 @@ function deleteRecording(id) {
   }
 }
 
-// Convert a JSONL recording to a flat CSV. Reads whole file into memory
-// (recordings are small ~1.4MB/hr) then writes to user-chosen path.
+/**
+ * Convert a JSONL recording to a flat CSV. Shows a save dialog so the
+ * user picks the destination. Reads the whole file into memory
+ * (recordings are small ~1.4MB/hr) then writes to the chosen path.
+ * Wide CSV format: timestamp, system_used/total/free, then rank columns
+ * (r0_pid, r0_name, r0_mem, r1_pid, ...).
+ * @param {string} id - recording id
+ * @param {BrowserWindow} parentWindow - parent for the save dialog
+ * @returns {Promise<{ok:true,filePath:string}|{ok:false,error:string}>}
+ */
 async function exportCsv(id, parentWindow) {
   const filePath = path.join(getRecordingsDir(), id + '.jsonl');
   if (!fs.existsSync(filePath)) return { ok: false, error: '录制不存在' };

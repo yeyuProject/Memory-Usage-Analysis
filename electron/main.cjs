@@ -36,9 +36,18 @@ const MEM_RATIOS = {
   COMMIT_RATIO: 1.3,
 };
 
-// ===== Compute leak slope (linear regression) =====
-// Replicates the renderer-side computation so the renderer and the
-// snapshot export share the same definition.
+/**
+ * Compute a process's leak percentage via least-squares linear regression.
+ * The slope (bytes/sample) is normalized by the mean to get a unitless
+ * fraction, then multiplied by 60 to approximate "percent growth per
+ * full window" rather than per single sample step. Identical to the
+ * renderer-side algorithm in src/modules/process-table.js (kept here so
+ * the history snapshot IPC handler can run without depending on the
+ * renderer's modules).
+ *
+ * @param {number[]} samples - memory samples in chronological order
+ * @returns {number} percentage (positive = growing, 0 = flat/unknown)
+ */
 function computeLeakPercent(samples) {
   if (!samples || samples.length < 5) return 0;
   const n = samples.length;
@@ -57,7 +66,16 @@ function computeLeakPercent(samples) {
   return Math.round((slope / mean) * 60 * 100);
 }
 
-// ===== Collector: fetch data, update caches, record if active =====
+/**
+ * Periodic collector tick. Fetches one data sample from the PowerShell
+ * REPL, updates the in-memory caches (processCache, systemCache,
+ * processHistory), and appends a sample to the active recording if any.
+ *
+ * Reentrancy-guarded by isCollecting — a slow tick won't trigger a
+ * second concurrent call.
+ *
+ * @returns {Promise<void>}
+ */
 async function collectData() {
   if (isCollecting) return;
   isCollecting = true;
@@ -114,11 +132,19 @@ async function collectData() {
   }
 }
 
+/**
+ * Start the periodic collector. Fires one immediate collect() then
+ * schedules collectData() every 2000ms (matches the renderer refresh
+ * interval for clean UX). Idempotent — does nothing if already running.
+ */
 function startCollector() {
   collectData();
   refreshInterval = setInterval(collectData, 2000);
 }
 
+/**
+ * Stop the periodic collector. Idempotent — safe to call multiple times.
+ */
 function stopCollector() {
   if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }
 }

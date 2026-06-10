@@ -121,6 +121,10 @@ function renderRules() {
   ).join('');
 }
 
+// Display limits — must match the constants in process-table.js so the
+// filter <select> doesn't lag the main table.
+const PROCESS_TABLE_LIMIT = 200;
+
 /**
  * Populate the filter-process <select> with currently-available processes.
  * Uses the same limit as the main process table.
@@ -129,7 +133,7 @@ function populateFilterProcesses() {
   const sel = el('filterProcess');
   if (!sel) return;
   const current = new Set(Array.from(sel.selectedOptions).map(o => Number(o.value)));
-  sel.innerHTML = state.allProcesses.slice(0, 200).map(p =>
+  sel.innerHTML = state.allProcesses.slice(0, PROCESS_TABLE_LIMIT).map(p =>
     '<option value="' + p.pid + '"' + (current.has(p.pid) ? ' selected' : '') + '>' +
     escapeHtml(p.name) + ' (' + p.pid + ') - ' + formatBytes(p.memoryUsage) + '</option>'
   ).join('');

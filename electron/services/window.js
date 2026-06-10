@@ -9,6 +9,12 @@ const { BrowserWindow } = require('electron');
 
 let mainWindow = null;
 
+/**
+ * Create the main BrowserWindow and load src/index.html.
+ * Stores the instance so get() can return it later for dialog parenting.
+ * Called once from main.cjs when app is ready.
+ * @returns {BrowserWindow} the newly created window
+ */
 function create() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -30,6 +36,12 @@ function create() {
   return mainWindow;
 }
 
+/**
+ * Get the current main BrowserWindow, or null if it has been closed.
+ * Used by IPC handlers that need a parent for native dialogs (save dialog,
+ * showItemInFolder, etc).
+ * @returns {BrowserWindow|null}
+ */
 function get() {
   return mainWindow;
 }

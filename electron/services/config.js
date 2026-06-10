@@ -22,13 +22,25 @@ const DEFAULT_CONFIG = {
 };
 
 let configPath = null;
+/**
+ * Resolve (and memoize) the absolute path to config.json inside userData.
+ * Cached on first call since app.getPath('userData') is stable for the
+ * process lifetime. Exported for tests that want to inspect the file.
+ * @returns {string}
+ */
 function getConfigPath() {
   if (!configPath) configPath = path.join(app.getPath('userData'), 'config.json');
   return configPath;
 }
 
-// Validate a config patch: only accept known keys, clamp to safe ranges.
-// Defensive against malformed renderer input.
+/**
+ * Validate a config patch: only accept known keys, clamp to safe ranges.
+ * Defensive against malformed renderer input. Drops keys that fail
+ * validation (NaN, Infinity, out-of-range, wrong type) silently rather
+ * than throwing — partial saves are still useful.
+ * @param {object} patch - candidate config fields from the UI
+ * @returns {object} sanitized patch (subset of input)
+ */
 function sanitizeConfig(patch) {
   const out = {};
   if (typeof patch.spikeThreshold === 'number' && Number.isFinite(patch.spikeThreshold)) {
@@ -49,6 +61,11 @@ function sanitizeConfig(patch) {
   return out;
 }
 
+/**
+ * Load the user config from disk, merged with DEFAULT_CONFIG.
+ * Returns defaults if the file is missing or corrupt — never throws.
+ * @returns {object} merged config (always has all 5 keys)
+ */
 function loadConfig() {
   try {
     if (!fs.existsSync(getConfigPath())) return { ...DEFAULT_CONFIG };
@@ -63,6 +80,11 @@ function loadConfig() {
   }
 }
 
+/**
+ * Merge patch with current config and persist to disk.
+ * @param {object} patch - partial config to merge
+ * @returns {{ok: true, config: object}|{ok: false, error: string}}
+ */
 function saveConfig(patch) {
   const clean = sanitizeConfig(patch);
   if (Object.keys(clean).length === 0) {
@@ -78,6 +100,10 @@ function saveConfig(patch) {
   }
 }
 
+/**
+ * Overwrite config.json with DEFAULT_CONFIG (factory reset).
+ * @returns {{ok: true, config: object}|{ok: false, error: string}}
+ */
 function resetConfig() {
   try {
     fs.writeFileSync(getConfigPath(), JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', 'utf8');
