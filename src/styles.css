@@ -114,3 +114,25 @@ th.sort-desc .sort-ind::after { content: '↓'; color: #1890ff; font-weight: bol
 .ctx-item.danger:hover { background: #fff1f0; color: #ff4d4f; }
 .ctx-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
 .ctx-icon { font-size: 14px; width: 16px; text-align: center; }
+
+/* Search clear button (✕) and match highlight */
+.search-clear {
+  background: #f5f5f5;
+  color: #999;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: -32px;
+  margin-right: 24px;
+}
+.search-clear:hover { background: #ff4d4f; color: #fff; border-color: #ff4d4f; }
+mark.search-hl {
+  background: #ffe58f;
+  color: #d4380d;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+#searchInput:focus { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,0.2); }

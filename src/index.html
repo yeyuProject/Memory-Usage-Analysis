@@ -119,7 +119,9 @@
           <div class="card-header">
             <h2>进程列表</h2>
             <div class="actions">
-              <input type="text" id="searchInput" placeholder="搜索进程名或PID" />
+              <input type="text" id="searchInput" placeholder="搜索进程名或PID (Ctrl+F)" style="position:relative" />
+              <button id="searchClear" class="search-clear" title="清除搜索" style="display:none">✕</button>
+              <span id="searchMatchCount" style="color:#999;font-size:12px"></span>
               <button id="refreshBtn">刷新</button>
             </div>
           </div>

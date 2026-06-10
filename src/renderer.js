@@ -15,6 +15,8 @@ const els = {
   status: $('status'),
   toast: $('toast'),
   searchInput: $('searchInput'),
+  searchClear: $('searchClear'),
+  searchMatchCount: $('searchMatchCount'),
   refreshBtn: $('refreshBtn'),
   tbody: $('processTbody'),
   detailCard: $('detailCard'),
@@ -396,6 +398,17 @@ function getFilteredProcesses() {
 
 function renderTable() {
   let matched = getFilteredProcesses();
+  // Update search UI: match count and clear button visibility
+  const term = els.searchInput.value.trim();
+  if (els.searchClear) els.searchClear.style.display = term ? 'inline-block' : 'none';
+  if (els.searchMatchCount) {
+    if (term) {
+      els.searchMatchCount.textContent = `${matched.length} / ${allProcesses.length}`;
+      els.searchMatchCount.style.color = matched.length === 0 ? '#ff4d4f' : '#1890ff';
+    } else {
+      els.searchMatchCount.textContent = allProcesses.length > 0 ? `共 ${allProcesses.length} 个` : '';
+    }
+  }
   if (matched.length === 0) {
     els.tbody.innerHTML = `<tr><td colspan="6" class="empty">${allProcesses.length === 0 ? '暂无数据' : '无匹配结果'}</td></tr>`;
     return;
@@ -408,10 +421,18 @@ function renderTable() {
   // Apply user-selected sort
   enriched.sort((a, b) => {
     const va = a[sortKey], vb = b[sortKey];
-    if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(vb);
     return sortDir === 'asc' ? va - vb : vb - va;
   });
   const slice = enriched.slice(0, 200);
+  // Highlight matched search term in the name (and pid) cells.
+  // Uses <mark class="search-hl"> for visual emphasis. Escapes regex metachars.
+  const escTerm = term ? term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+  const re = term ? new RegExp('(' + escTerm + ')', 'gi') : null;
+  const hl = s => {
+    if (!re || !s) return escapeHtml(String(s));
+    return escapeHtml(String(s)).replace(re, '<mark class="search-hl">$1</mark>');
+  };
   els.tbody.innerHTML = slice.map(p => {
     const spike = processHistory[p.pid]?.spikePercent ?? 0;
     // Only show spike after we have enough samples to establish a baseline (>5)
@@ -425,8 +446,8 @@ function renderTable() {
       else spikeCell = `<span style="color:#999">${spike >= 0 ? '+' : ''}${spike}%</span>`;
     }
     return `<tr data-pid="${p.pid}" class="${selectedPid === p.pid ? 'selected' : ''}">
-      <td>${p.pid}</td>
-      <td>${escapeHtml(p.name)}</td>
+      <td>${hl(p.pid)}</td>
+      <td>${hl(p.name)}</td>
       <td>${formatBytes(p.memoryUsage)}</td>
       <td>${((p.memoryUsage / sysTotalCache) * 100).toFixed(2)}%</td>
       <td>${spikeCell}</td>
@@ -869,6 +890,25 @@ document.querySelectorAll('th.sortable').forEach(th => th.addEventListener('clic
 
 els.refreshBtn.addEventListener('click', refresh);
 els.searchInput.addEventListener('input', renderTable);
+els.searchClear.addEventListener('click', () => {
+  els.searchInput.value = '';
+  renderTable();
+  els.searchInput.focus();
+});
+// Ctrl+F focuses search box (matches browser convention)
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    e.preventDefault();
+    els.searchInput.focus();
+    els.searchInput.select();
+  }
+  // Escape clears search when input is focused
+  if (e.key === 'Escape' && document.activeElement === els.searchInput) {
+    els.searchInput.value = '';
+    renderTable();
+    els.searchInput.blur();
+  }
+});
 els.tbody.addEventListener('click', (e) => {
   const tr = e.target.closest('tr');
   if (!tr || !tr.dataset.pid) return;
