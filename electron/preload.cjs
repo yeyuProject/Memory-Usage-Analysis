@@ -11,4 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProcessMemory: (pid) => ipcRenderer.invoke('get-process-memory', pid),
   refreshNow: () => ipcRenderer.invoke('refresh-now'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  killProcess: (pid) => ipcRenderer.invoke('kill-process', pid),
+  openFileLocation: (name) => ipcRenderer.invoke('open-file-location', name),
+  writeClipboard: (text) => ipcRenderer.invoke('write-clipboard', text),
 });

@@ -46,6 +46,7 @@ const els = {
   exportAll: $('exportAll'),
   exportBtn: $('exportBtn'),
   exportPreview: $('exportPreview'),
+  ctxMenu: $('ctxMenu'),
 };
 
 // Memory estimation ratios (these are rough approximations; real values
@@ -89,6 +90,71 @@ function showToast(msg, type = 'info') {
   setTimeout(() => { els.toast.className = 'toast'; }, 3000);
 }
 function setStatus(msg) { els.status.textContent = msg; }
+
+// ==================== Context Menu ====================
+let ctxTargetPid = null;
+let ctxTargetName = null;
+
+function showContextMenu(x, y, pid, name) {
+  ctxTargetPid = pid;
+  ctxTargetName = name;
+  const menu = els.ctxMenu;
+  menu.innerHTML = `
+    <div class="ctx-item" data-action="copy-pid">📋 复制 PID</div>
+    <div class="ctx-item" data-action="copy-name">📋 复制名称</div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" data-action="open-location">📂 打开文件位置</div>
+    <div class="ctx-item" data-action="select">✓ 选中并查看详情</div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item danger" data-action="kill">⚠ 结束进程</div>
+  `;
+  // Position: keep within viewport
+  const w = 200, h = 240;
+  const px = Math.min(x, window.innerWidth - w - 8);
+  const py = Math.min(y, window.innerHeight - h - 8);
+  menu.style.left = px + 'px';
+  menu.style.top = py + 'px';
+  menu.classList.add('show');
+}
+
+function hideContextMenu() {
+  els.ctxMenu.classList.remove('show');
+  ctxTargetPid = null;
+  ctxTargetName = null;
+}
+
+async function handleContextAction(action) {
+  const pid = ctxTargetPid;
+  const name = ctxTargetName;
+  hideContextMenu();
+  if (pid == null || !name) return;
+
+  if (action === 'copy-pid') {
+    await api.writeClipboard(String(pid));
+    showToast(`已复制 PID: ${pid}`, 'info');
+  } else if (action === 'copy-name') {
+    await api.writeClipboard(name);
+    showToast(`已复制: ${name}`, 'info');
+  } else if (action === 'open-location') {
+    const r = await api.openFileLocation(name);
+    if (r.success) showToast(`已打开文件位置: ${r.path || ''}`, 'info');
+    else showToast(`打开失败: ${r.error}`, 'error');
+  } else if (action === 'select') {
+    showDetail(pid);
+    document.querySelectorAll('#processTbody tr').forEach(row => row.classList.remove('selected'));
+    const tr = document.querySelector(`#processTbody tr[data-pid="${pid}"]`);
+    if (tr) tr.classList.add('selected');
+  } else if (action === 'kill') {
+    if (!confirm(`确定要结束进程 ${name} (PID: ${pid})？\n这将强制终止该进程，可能导致数据丢失。`)) return;
+    const r = await api.killProcess(pid);
+    if (r.success) {
+      showToast(`已结束进程 ${name} (PID: ${pid})`, 'info');
+      setTimeout(refresh, 500);
+    } else {
+      showToast(`结束失败: ${r.error}`, 'error');
+    }
+  }
+}
 
 function clearCanvas(ctx) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -679,6 +745,19 @@ els.tbody.addEventListener('click', (e) => {
   document.querySelectorAll('#processTbody tr').forEach(r => r.classList.remove('selected'));
   tr.classList.add('selected');
 });
+els.tbody.addEventListener('contextmenu', (e) => {
+  const tr = e.target.closest('tr');
+  if (!tr || !tr.dataset.pid) return;
+  e.preventDefault();
+  showContextMenu(e.clientX, e.clientY, Number(tr.dataset.pid), tr.children[1].textContent);
+});
+els.ctxMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('.ctx-item');
+  if (!item) return;
+  handleContextAction(item.dataset.action);
+});
+document.addEventListener('click', hideContextMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideContextMenu(); });
 els.recStart.addEventListener('click', startRecording);
 els.recStop.addEventListener('click', stopRecording);
 els.recTbody.addEventListener('click', (e) => {

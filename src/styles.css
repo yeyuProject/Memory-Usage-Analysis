@@ -85,3 +85,30 @@ th.sortable:hover { background: #f0f0f0; }
 .sort-ind { font-size: 10px; color: #999; margin-left: 4px; }
 th.sort-asc .sort-ind::after { content: '↑'; color: #1890ff; font-weight: bold; }
 th.sort-desc .sort-ind::after { content: '↓'; color: #1890ff; font-weight: bold; }
+
+/* Right-click context menu */
+.ctx-menu {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 2000;
+  display: none;
+  font-size: 13px;
+}
+.ctx-menu.show { display: block; }
+.ctx-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ctx-item:hover { background: #f0f7ff; color: #1890ff; }
+.ctx-item.danger { color: #ff4d4f; }
+.ctx-item.danger:hover { background: #fff1f0; color: #ff4d4f; }
+.ctx-divider { height: 1px; background: #f0f0f0; margin: 4px 0; }
+.ctx-icon { font-size: 14px; width: 16px; text-align: center; }

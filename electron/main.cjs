@@ -117,6 +117,49 @@ ipcMain.handle('refresh-now', async () => {
 });
 ipcMain.handle('get-app-version', () => app.getVersion());
 
+ipcMain.handle('kill-process', async (_e, pid) => {
+  if (typeof pid !== 'number' || !Number.isFinite(pid) || pid <= 0) {
+    return { success: false, error: '无效的PID' };
+  }
+  try {
+    await execAsync(`taskkill /PID ${pid} /F`, { windowsHide: true });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('open-file-location', async (_e, processName) => {
+  if (typeof processName !== 'string' || !processName.trim()) {
+    return { success: false, error: '无效的进程名' };
+  }
+  try {
+    // Find the executable path via WMI
+    const { stdout } = await execAsync(
+      `powershell.exe -NoProfile -Command "(Get-Process -Name '${processName.replace(/'/g, "''")}' -ErrorAction SilentlyContinue | Select-Object -First 1).Path"`,
+      { encoding: 'utf-8', windowsHide: true, timeout: 5000 }
+    );
+    const exePath = stdout.trim();
+    if (!exePath) {
+      return { success: false, error: '找不到进程路径' };
+    }
+    const { shell } = require('electron');
+    shell.showItemInFolder(exePath);
+    return { success: true, path: exePath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('write-clipboard', (_e, text) => {
+  const { clipboard } = require('electron');
+  if (typeof text === 'string') {
+    clipboard.writeText(text);
+    return { success: true };
+  }
+  return { success: false, error: '无效的内容' };
+});
+
 app.whenReady().then(() => {
   createWindow();
   startCollector();
