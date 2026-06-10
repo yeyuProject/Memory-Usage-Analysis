@@ -4,7 +4,7 @@
  */
 
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs');
@@ -272,36 +272,226 @@ async function exportRecordingCsv(id) {
   }
 }
 
-const COLLECTOR_SCRIPT = `
-$procs = Get-Process | Where-Object { $_.Id -gt 0 } | ForEach-Object {
-  [PSCustomObject]@{ pid = [int]$_.Id; name = $_.ProcessName; memory = [long]$_.WorkingSet64 }
+// ============== Long-running PowerShell session ==============
+// Instead of spawning a new powershell.exe every 2s (which costs ~430ms per
+// call: process startup + .NET runtime + Get-Process), we keep ONE process
+// alive and talk to it over stdin/stdout using a simple REPL protocol.
+//
+// Protocol (line-oriented, UTF-8):
+//   Host->PS:  "COLLECT\n"  (request)
+//   PS->Host:  <JSON line(s)>  (one JSON payload, possibly split across lines)
+//              "READY\n"        (sentinel: end of this request's response)
+//              "ERR: <msg>\n"   (error, followed by READY)
+//
+// The REPL is single-threaded: one request in flight at a time. Concurrent
+// callers are queued. This avoids interleaving of JSON payloads from multiple
+// in-flight requests, which would complicate parsing.
+const PS_READY = 'READY';
+const PS_PATH = 'powershell.exe';
+let psSession = null;        // { proc, buffer, pending, alive, stats }
+const psQueue = [];          // queued collect() calls
+
+// PowerShell bootstrap script that defines a Collect function and runs a REPL.
+const PS_REPL_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+function Collect {
+  $procs = Get-Process | Where-Object { $_.Id -gt 0 } | ForEach-Object {
+    [PSCustomObject]@{ pid = [int]$_.Id; name = $_.ProcessName; memory = [long]$_.WorkingSet64 }
+  }
+  $os = Get-CimInstance Win32_OperatingSystem
+  [PSCustomObject]@{
+    processes = $procs
+    system = @{ total = [long]$os.TotalVisibleMemorySize * 1024; free = [long]$os.FreePhysicalMemory * 1024 }
+  } | ConvertTo-Json -Compress -Depth 3
 }
-$os = Get-CimInstance Win32_OperatingSystem
-[PSCustomObject]@{
-  processes = $procs
-  system = @{ total = [long]$os.TotalVisibleMemorySize * 1024; free = [long]$os.FreePhysicalMemory * 1024 }
-} | ConvertTo-Json -Compress -Depth 3
+Write-Output '${PS_READY}'
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) { break }
+  $cmd = $line.Trim()
+  if ($cmd -eq 'COLLECT') {
+    try {
+      $json = Collect
+      if ($null -eq $json) { $json = '' }
+      Write-Output $json
+    } catch {
+      Write-Output "ERR: $($_.Exception.Message)"
+    }
+    Write-Output '${PS_READY}'
+  } elseif ($cmd -eq 'EXIT' -or $cmd -eq 'QUIT') {
+    break
+  }
+}
 `;
+
+function startPsSession() {
+  if (psSession && psSession.alive) return psSession;
+  try {
+    const proc = spawn(PS_PATH, [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-Command', PS_REPL_SCRIPT,
+    ], {
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    psSession = {
+      proc,
+      buffer: '',
+      jsonAccum: [],          // lines between COLLECT and READY
+      pending: null,          // { resolve, reject, startedAt }
+      alive: true,
+      stats: { requests: 0, errors: 0, lastDurationMs: 0 },
+    };
+    proc.stdout.setEncoding('utf8');
+    proc.stderr.setEncoding('utf8');
+    proc.stdout.on('data', onPsStdout);
+    proc.stderr.on('data', d => console.error('[ps stderr]', d.toString().trim()));
+    proc.on('exit', code => {
+      if (psSession) psSession.alive = false;
+      // Reject any in-flight request so callers don't hang
+      if (psSession && psSession.pending) {
+        const p = psSession.pending;
+        psSession.pending = null;
+        p.reject(new Error('PowerShell exited (code ' + code + ')'));
+      }
+    });
+    proc.on('error', err => {
+      console.error('[ps spawn error]', err.message);
+      if (psSession) psSession.alive = false;
+      if (psSession && psSession.pending) {
+        const p = psSession.pending;
+        psSession.pending = null;
+        p.reject(err);
+      }
+    });
+    return psSession;
+  } catch (e) {
+    console.error('[startPsSession]', e.message);
+    return null;
+  }
+}
+
+function stopPsSession() {
+  if (!psSession) return;
+  psSession.alive = false;
+  try {
+    if (psSession.proc && !psSession.proc.killed) {
+      try { psSession.proc.stdin.write('EXIT\n'); } catch {}
+      setTimeout(() => {
+        if (psSession && psSession.proc && !psSession.proc.killed) {
+          try { psSession.proc.kill(); } catch {}
+        }
+      }, 500);
+    }
+  } catch {}
+  psSession = null;
+}
+
+function onPsStdout(chunk) {
+  if (!psSession) return;
+  psSession.buffer += chunk;
+  let nl;
+  while ((nl = psSession.buffer.indexOf('\n')) >= 0) {
+    const line = psSession.buffer.slice(0, nl).replace(/\r$/, '');
+    psSession.buffer = psSession.buffer.slice(nl + 1);
+    handlePsLine(line);
+  }
+}
+
+// State machine for one request's response:
+//   jsonAccum collects lines after a COLLECT until READY (or ERR) arrives.
+function handlePsLine(line) {
+  if (!psSession) return;
+  if (line === PS_READY) {
+    if (psSession.pending) {
+      const p = psSession.pending;
+      psSession.pending = null;
+      const text = psSession.jsonAccum.join('\n').trim();
+      psSession.jsonAccum = [];
+      psSession.stats.lastDurationMs = Date.now() - p.startedAt;
+      psSession.stats.requests++;
+      if (!text) { p.resolve(null); }
+      else {
+        try { p.resolve(JSON.parse(text)); }
+        catch (e) { p.reject(new Error('JSON parse failed: ' + e.message)); }
+      }
+    }
+    // Only READY drains the queue. ERR alone does NOT drain — the subsequent
+    // READY (which PowerShell always sends after ERR) will drain. This prevents
+    // a subtle bug where the queued request would see an empty buffer.
+    drainQueue();
+    return;
+  }
+  if (line.startsWith('ERR: ')) {
+    if (psSession.pending) {
+      const p = psSession.pending;
+      psSession.pending = null;
+      psSession.jsonAccum = [];
+      psSession.stats.errors++;
+      p.reject(new Error(line.slice(5)));
+    }
+    // Do NOT drain here — wait for the next READY.
+    return;
+  }
+  // JSON payload line (or continuation). Buffer until READY.
+  if (psSession.pending) psSession.jsonAccum.push(line);
+}
+
+function drainQueue() {
+  while (psQueue.length > 0 && psSession && psSession.alive && !psSession.pending) {
+    const next = psQueue.shift();
+    sendCollectRequest(next);
+  }
+}
+
+function sendCollectRequest(req) {
+  psSession.pending = {
+    resolve: req.resolve,
+    reject: req.reject,
+    startedAt: Date.now(),
+  };
+  psSession.jsonAccum = [];
+  try {
+    psSession.proc.stdin.write('COLLECT\n');
+  } catch (e) {
+    const p = psSession.pending;
+    psSession.pending = null;
+    p.reject(e);
+  }
+}
+
+// Public: request a collect. Auto-starts the session if needed.
+function psCollect() {
+  return new Promise((resolve, reject) => {
+    if (!psSession || !psSession.alive) {
+      const fresh = startPsSession();
+      if (!fresh) {
+        reject(new Error('PowerShell session not available'));
+        return;
+      }
+    }
+    if (psSession.pending) {
+      // Queue
+      psQueue.push({ resolve, reject });
+      return;
+    }
+    sendCollectRequest({ resolve, reject });
+  });
+}
 
 async function collectData() {
   if (isCollecting) return;
   isCollecting = true;
   try {
-    const scriptPath = path.join(app.getPath('temp'), 'mua-collect.ps1');
-    require('fs').writeFileSync(scriptPath, COLLECTOR_SCRIPT, 'utf8');
-    const { stdout } = await execAsync(
-      `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
-      { encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024, timeout: 15000, windowsHide: true }
-    );
-    if (!stdout || !stdout.trim()) return;
-    const data = JSON.parse(stdout);
+    const data = await psCollect();
+    if (!data) return;
     if (data && data.processes) {
       processCache = data.processes
         .map(p => ({ pid: p.pid, name: p.name, memoryUsage: p.memory || 0 }))
         .sort((a, b) => b.memoryUsage - a.memoryUsage);
 
       // Update per-process history for spike detection.
-      // History only tracks the most recent MAX_SAMPLES samples (~2 min @ 2s interval).
       const now = Date.now();
       const currentPids = new Set(processCache.map(p => p.pid));
       processCache.forEach(p => {
@@ -312,12 +502,9 @@ async function collectData() {
         }
         h.samples.push(p.memoryUsage);
         if (h.samples.length > MAX_SAMPLES) h.samples.shift();
-        // Baseline: min of first 5 samples (initialization phase)
         if (h.samples.length <= 5) h.baseline = Math.min(...h.samples);
-        // Peak tracking
         if (p.memoryUsage > h.peak) { h.peak = p.memoryUsage; h.peakTime = now; }
       });
-      // Evict history for processes that have exited to bound memory
       for (const pid of processHistory.keys()) {
         if (!currentPids.has(pid)) processHistory.delete(pid);
       }
@@ -331,7 +518,6 @@ async function collectData() {
       };
     }
 
-    // Append to active recording (if any). Cheap: one JSONL line.
     if (recordingState && processCache.length > 0 && systemCache) {
       appendRecordingSample(
         Date.now(),
@@ -345,6 +531,8 @@ async function collectData() {
     }
   } catch (err) {
     console.error('[collectData] error:', err.message);
+    // Mark session dead so next tick restarts it
+    if (psSession) psSession.alive = false;
   } finally {
     isCollecting = false;
   }
@@ -629,6 +817,23 @@ app.on('before-quit', () => {
   if (recordingState && recordingState.stream) {
     try { recordingState.stream.end(); } catch {}
   }
+  stopPsSession();
+});
+
+// Diagnostic IPC: expose session stats so renderer can show "session N ms"
+// and we can benchmark the optimization from a UI button if we want.
+ipcMain.handle('get-collector-stats', () => {
+  if (!psSession) return { alive: false };
+  return {
+    alive: psSession.alive,
+    pid: psSession.proc ? psSession.proc.pid : null,
+    startTime: psSession.startTime,
+    requests: psSession.stats.requests,
+    errors: psSession.stats.errors,
+    lastDurationMs: psSession.stats.lastDurationMs,
+    pending: !!psSession.pending,
+    queueLength: psQueue.length,
+  };
 });
 
 app.whenReady().then(() => {

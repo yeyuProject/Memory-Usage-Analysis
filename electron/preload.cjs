@@ -28,4 +28,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetConfig: () => ipcRenderer.invoke('reset-config'),
   // History snapshot export (captures all processes + history analysis)
   exportHistorySnapshot: (opts) => ipcRenderer.invoke('export-history-snapshot', opts),
+  // Collector stats (for benchmarking the long-session optimization)
+  getCollectorStats: () => ipcRenderer.invoke('get-collector-stats'),
 });
