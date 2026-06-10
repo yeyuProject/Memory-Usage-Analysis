@@ -21,6 +21,7 @@ const SUITES = [
   'test-copytop50.cjs',
   'test-stats-bar.cjs',
   'test-refactor.cjs',
+  'test-theme.cjs',
 ];
 
 let totalSuites = 0;

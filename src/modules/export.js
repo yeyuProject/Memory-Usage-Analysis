@@ -9,6 +9,7 @@
 const state = require('./state');
 const { el, escapeHtml, formatBytes, showToast, setStatus } = require('./utils');
 const processTable = require('./process-table');
+const { COLORS } = require('./theme');
 
 /**
  * Build CSV content from the given process list.
@@ -50,7 +51,7 @@ function toHtml(data) {
   ).join('');
   return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>内存分析报告</title>' +
     '<style>body{font-family:sans-serif;padding:20px}table{border-collapse:collapse;width:100%}' +
-    'th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#1890ff;color:#fff}</style>' +
+    'th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:' + COLORS.PRIMARY + ';color:#fff}</style>' +
     '</head><body><h1>内存分析报告</h1><p>生成时间: ' + new Date().toLocaleString() + '</p>' +
     '<p>进程数: ' + data.length + '</p>' +
     '<table><thead><tr><th>PID</th><th>名称</th><th>内存占用</th></tr></thead><tbody>' +

@@ -136,3 +136,28 @@ mark.search-hl {
   font-weight: 600;
 }
 #searchInput:focus { border-color: #1890ff; box-shadow: 0 0 0 2px rgba(24,144,255,0.2); }
+
+/* --- utility classes extracted from inline styles in index.html --- */
+.hint { color: #999; font-size: 12px; }
+.hint-dim { color: #888; font-size: 12px; }
+.label-sm { font-size: 12px; color: #666; }
+.label-bold { font-weight: 600; }
+.is-hidden { display: none; }
+.col-pid { width: 80px; }
+.col-100 { width: 100px; }
+.col-55 { width: 55px; }
+.col-65 { width: 65px; }
+.col-110 { width: 110px; }
+.col-130 { width: 130px; }
+.label-wide { min-width: 140px; }
+.form-row-center { align-items: center; gap: 12px; }
+.section-divider { margin-top: 8px; border-top: 1px solid #eee; padding-top: 8px; }
+.preview-empty { margin-top: 12px; }
+.search-input-wrap { position: relative; }
+.col-90 { width: 90px; }
+.col-120 { width: 120px; }
+.mt-8 { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+.mb-8 { margin-bottom: 8px; }
+.ml-12 { margin-left: 12px; }
+.cfg-status { color: #52c41a; margin-left: 8px; }

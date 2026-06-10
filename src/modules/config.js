@@ -6,6 +6,7 @@
 const state = require('./state');
 const { el, showToast } = require('./utils');
 const processTable = require('./process-table');
+const { latencyColor } = require('./theme');
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -105,13 +106,10 @@ async function updateCollectorStats() {
     const qSuffix = stats.queueLength > 0 ? ' | 队列 ' + stats.queueLength : '';
     status.textContent = 'PS: ' + lat + ' | 请求 ' + stats.requests + errSuffix + pendSuffix + qSuffix;
     const d = stats.lastDurationMs;
-    if (d == null) status.style.color = '#999';
-    else if (d < 200) status.style.color = '#52c41a';
-    else if (d < 500) status.style.color = '#faad14';
-    else status.style.color = '#ff4d4f';
+    status.style.color = latencyColor(d);
   } catch (e) {
     status.textContent = 'PS: 错误';
-    status.style.color = '#ff4d4f';
+    status.style.color = latencyColor(null);
   }
 }
 

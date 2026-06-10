@@ -26,6 +26,7 @@ const notifications = require('./modules/notifications');
 const exporter = require('./modules/export');
 const config = require('./modules/config');
 const charts = require('./modules/charts');
+const { COLORS, loadColor } = require('./modules/theme');
 
 const REFRESH_INTERVAL_MS = config.REFRESH_INTERVAL_MS;
 
@@ -86,7 +87,7 @@ function renderSystem(sys) {
   els.totalMem.textContent = formatBytes(sys.totalPhysicalMemory);
   els.freeMem.textContent = formatBytes(sys.availablePhysicalMemory);
   els.memLoad.textContent = sys.memoryLoad + '%';
-  els.memLoad.style.color = sys.memoryLoad > 80 ? '#ff4d4f' : sys.memoryLoad > 60 ? '#faad14' : '#1890ff';
+  els.memLoad.style.color = loadColor(sys.memoryLoad);
   els.procCount.textContent = state.allProcesses.length;
 }
 
@@ -94,8 +95,8 @@ function renderDashCharts() {
   charts.drawBarChart(el('dashBarChart'), state.allProcesses);
   if (state.systemCache) {
     charts.drawPieChart(el('dashPie'), [
-      { name: '已用', value: state.systemCache.totalPhysicalMemory - state.systemCache.availablePhysicalMemory, color: '#ff4d4f' },
-      { name: '可用', value: state.systemCache.availablePhysicalMemory, color: '#52c41a' },
+      { name: '已用', value: state.systemCache.totalPhysicalMemory - state.systemCache.availablePhysicalMemory, color: COLORS.DANGER },
+      { name: '可用', value: state.systemCache.availablePhysicalMemory, color: COLORS.SUCCESS },
     ]);
   }
 }

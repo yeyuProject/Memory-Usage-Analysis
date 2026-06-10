@@ -3,14 +3,11 @@
 // Each draw function takes a <canvas> element + data and draws in place.
 // Reentrant-safe (checks isDrawing flag) — concurrent calls are no-ops.
 //
-// Theme: Ant Design-inspired red/orange/green palette.
+// Theme colors are imported from ./theme (single source of truth shared
+// with renderer.js, config.js, notifications.js, etc).
 
 const { formatShort } = require('./utils');
-
-const COLORS = ['#1890ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2', '#eb2f96'];
-const TEXT_COLOR = '#666';
-const GRID_COLOR = '#f0f0f0';
-const AXIS_COLOR = '#d9d9d9';
+const { COLORS } = require('./theme');
 
 let isDrawing = false;
 
@@ -26,7 +23,7 @@ function clearCanvas(ctx) {
  * Draw X/Y axes with ticks and labels.
  */
 function drawAxes(ctx, w, h, padding) {
-  ctx.strokeStyle = AXIS_COLOR;
+  ctx.strokeStyle = COLORS.AXIS_COLOR;
   ctx.lineWidth = 1;
   // Y axis
   ctx.beginPath();
@@ -35,14 +32,14 @@ function drawAxes(ctx, w, h, padding) {
   ctx.lineTo(w - padding.right, h - padding.bottom);
   ctx.stroke();
   // Y-axis labels (0, 25%, 50%, 75%, 100%)
-  ctx.fillStyle = TEXT_COLOR;
+  ctx.fillStyle = COLORS.TEXT_MUTED;
   ctx.font = '11px sans-serif';
   ctx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
     const y = h - padding.bottom - (i / 4) * (h - padding.top - padding.bottom);
     ctx.fillText((i * 25) + '%', padding.left - 6, y + 4);
     // Gridline
-    ctx.strokeStyle = GRID_COLOR;
+    ctx.strokeStyle = COLORS.GRID_COLOR;
     ctx.beginPath();
     ctx.moveTo(padding.left, y);
     ctx.lineTo(w - padding.right, y);
@@ -72,10 +69,10 @@ function drawBarChart(canvas, data) {
     top.forEach((p, i) => {
       const y = padding.top + i * barH;
       const barW = (p.memoryUsage / max) * (w - padding.left - padding.right);
-      ctx.fillStyle = COLORS[i % COLORS.length];
+      ctx.fillStyle = COLORS.CHART_SERIES[i % COLORS.CHART_SERIES.length];
       ctx.fillRect(padding.left, y + 2, barW, barH - 4);
       // Label (left)
-      ctx.fillStyle = TEXT_COLOR;
+      ctx.fillStyle = COLORS.TEXT_MUTED;
       ctx.textAlign = 'right';
       ctx.fillText(p.name.length > 12 ? p.name.slice(0, 11) + '…' : p.name, padding.left - 6, y + barH / 2 + 4);
       // Value (right of bar)
@@ -113,7 +110,7 @@ function drawPieChart(canvas, data) {
       ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r, angle, angle + slice);
       ctx.closePath();
-      ctx.fillStyle = d.color || COLORS[i % COLORS.length];
+      ctx.fillStyle = d.color || COLORS.CHART_SERIES[i % COLORS.CHART_SERIES.length];
       ctx.fill();
       angle += slice;
     });
@@ -122,9 +119,9 @@ function drawPieChart(canvas, data) {
     ctx.textAlign = 'left';
     let ly = 8;
     data.forEach((d, i) => {
-      ctx.fillStyle = d.color || COLORS[i % COLORS.length];
+      ctx.fillStyle = d.color || COLORS.CHART_SERIES[i % COLORS.CHART_SERIES.length];
       ctx.fillRect(6, ly, 10, 10);
-      ctx.fillStyle = TEXT_COLOR;
+      ctx.fillStyle = COLORS.TEXT_MUTED;
       const pct = ((d.value / total) * 100).toFixed(1);
       ctx.fillText(`${d.name} ${pct}%`, 20, ly + 9);
       ly += 16;
@@ -201,7 +198,7 @@ function drawLineChart(canvas, series) {
     series.forEach((s, i) => {
       ctx.fillStyle = s.color;
       ctx.fillRect(lx, h - padding.bottom + 6, 10, 10);
-      ctx.fillStyle = TEXT_COLOR;
+      ctx.fillStyle = COLORS.TEXT_MUTED;
       ctx.fillText(s.label, lx + 14, h - padding.bottom + 15);
       lx += ctx.measureText(s.label).width + 30;
     });
@@ -211,14 +208,14 @@ function drawLineChart(canvas, series) {
 }
 
 function drawAxesNumeric(ctx, w, h, padding, minY, maxY) {
-  ctx.strokeStyle = AXIS_COLOR;
+  ctx.strokeStyle = COLORS.AXIS_COLOR;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(padding.left, padding.top);
   ctx.lineTo(padding.left, h - padding.bottom);
   ctx.lineTo(w - padding.right, h - padding.bottom);
   ctx.stroke();
-  ctx.fillStyle = TEXT_COLOR;
+  ctx.fillStyle = COLORS.TEXT_MUTED;
   ctx.font = '11px sans-serif';
   ctx.textAlign = 'right';
   const plotH = h - padding.top - padding.bottom;
@@ -226,7 +223,7 @@ function drawAxesNumeric(ctx, w, h, padding, minY, maxY) {
     const v = minY + ((4 - i) / 4) * (maxY - minY);
     const y = padding.top + (i / 4) * plotH;
     ctx.fillText(formatShort(Math.round(v)), padding.left - 6, y + 4);
-    ctx.strokeStyle = GRID_COLOR;
+    ctx.strokeStyle = COLORS.GRID_COLOR;
     ctx.beginPath();
     ctx.moveTo(padding.left, y);
     ctx.lineTo(w - padding.right, y);
@@ -235,7 +232,7 @@ function drawAxesNumeric(ctx, w, h, padding, minY, maxY) {
 }
 
 function redrawAxesLine(ctx, w, h, left, right) {
-  ctx.strokeStyle = AXIS_COLOR;
+  ctx.strokeStyle = COLORS.AXIS_COLOR;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(left, 16);

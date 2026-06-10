@@ -11,6 +11,7 @@
 
 const state = require('./state');
 const { el, escapeHtml, formatBytes, showToast } = require('./utils');
+const { COLORS } = require('./theme');
 
 const HISTORY_LIMIT = 20;
 
@@ -115,7 +116,7 @@ function renderRules() {
     '<tr>' +
     '<td>' + escapeHtml(r.metric) + '</td>' +
     '<td>' + formatBytes(r.threshold) + '</td>' +
-    '<td><span style="color:' + (r.triggered ? '#ff4d4f' : '#52c41a') + '">' +
+    '<td><span style="color:' + (r.triggered ? COLORS.DANGER : COLORS.SUCCESS) + '">' +
     (r.triggered ? '已触发' : '正常') +
     '</span></td></tr>'
   ).join('');
