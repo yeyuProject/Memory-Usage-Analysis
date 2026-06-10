@@ -22,4 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listRecordings: () => ipcRenderer.invoke('list-recordings'),
   deleteRecording: (id) => ipcRenderer.invoke('delete-recording', id),
   exportRecordingCsv: (id) => ipcRenderer.invoke('export-recording-csv', id),
+  // User config (thresholds, recording defaults)
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
+  resetConfig: () => ipcRenderer.invoke('reset-config'),
 });

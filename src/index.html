@@ -64,7 +64,7 @@
         <div class="card">
           <div class="card-header">
             <h2>疑似内存泄漏 (持续增长)</h2>
-            <span class="hint" style="color:#999;font-size:12px">需 ≥10 个样本, 线性回归斜率 ≥30%/窗</span>
+            <span class="hint" style="color:#999;font-size:12px">需 ≥10 个样本, 线性回归斜率 ≥<span id="leakThresholdHint">30</span>%/窗</span>
           </div>
           <div class="card-body">
             <table>
@@ -73,6 +73,34 @@
               </thead>
               <tbody id="leakTbody"><tr><td colspan="5" class="empty">暂无内存泄漏迹象</td></tr></tbody>
             </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>⚙ 阈值设置</h2>
+            <span class="hint" style="color:#999;font-size:12px">设置自动保存到本地 config.json</span>
+          </div>
+          <div class="card-body">
+            <div class="form-row" style="align-items:center;gap:12px">
+              <label style="min-width:140px">突变阈值 (%):</label>
+              <input type="number" id="cfgSpikeThreshold" min="5" max="500" step="5" style="width:80px" />
+              <span style="color:#888;font-size:12px">进程相对基线的偏离百分比, ≥此值才标"突变"</span>
+            </div>
+            <div class="form-row" style="align-items:center;gap:12px">
+              <label style="min-width:140px">泄漏阈值 (%):</label>
+              <input type="number" id="cfgLeakThreshold" min="1" max="500" step="5" style="width:80px" />
+              <span style="color:#888;font-size:12px">线性回归斜率/均值 ×窗口, ≥此值才标"泄漏"</span>
+            </div>
+            <div class="form-row" style="align-items:center;gap:12px">
+              <label style="min-width:140px">录制 Top N:</label>
+              <input type="number" id="cfgRecordingTopN" min="5" max="50" step="1" style="width:80px" />
+              <span style="color:#888;font-size:12px">每次采样保留前N个进程 (5-50)</span>
+            </div>
+            <div class="form-row" style="align-items:center;gap:12px;margin-top:10px">
+              <button id="cfgSave" class="btn btn-primary">保存设置</button>
+              <button id="cfgReset" class="btn btn-danger">恢复默认</button>
+              <span id="cfgStatus" style="color:#52c41a;font-size:12px;margin-left:8px"></span>
+            </div>
           </div>
         </div>
         <div class="card">

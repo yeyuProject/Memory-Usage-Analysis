@@ -41,6 +41,70 @@ function ensureRecordingsDir() {
   }
 }
 
+// ============== User config persistence ==============
+// Thresholds and recording defaults persist to userData/config.json.
+// Schema is flat (one level deep) for readability and safe partial updates.
+const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
+const DEFAULT_CONFIG = {
+  spikeThreshold: 50,        // % deviation from baseline that triggers spike card
+  leakThreshold: 30,         // % slope-per-window that flags a leak
+  recordingTopN: 20,         // default Top-N for new recordings
+  recordingInterval: 2000,   // default sample interval in ms
+  notificationCooldown: 60,  // seconds between repeated notifications for same process
+};
+
+// Validate a config patch: only accept known keys, clamp to safe ranges.
+// Defensive against malformed renderer input.
+function sanitizeConfig(patch) {
+  const out = {};
+  if (typeof patch.spikeThreshold === 'number' && Number.isFinite(patch.spikeThreshold)) {
+    out.spikeThreshold = Math.min(500, Math.max(5, Math.round(patch.spikeThreshold)));
+  }
+  if (typeof patch.leakThreshold === 'number' && Number.isFinite(patch.leakThreshold)) {
+    out.leakThreshold = Math.min(500, Math.max(1, Math.round(patch.leakThreshold)));
+  }
+  if (typeof patch.recordingTopN === 'number' && Number.isFinite(patch.recordingTopN)) {
+    out.recordingTopN = Math.min(50, Math.max(5, Math.round(patch.recordingTopN)));
+  }
+  if (typeof patch.recordingInterval === 'number' && Number.isFinite(patch.recordingInterval)) {
+    out.recordingInterval = Math.min(60000, Math.max(1000, Math.round(patch.recordingInterval)));
+  }
+  if (typeof patch.notificationCooldown === 'number' && Number.isFinite(patch.notificationCooldown)) {
+    out.notificationCooldown = Math.min(3600, Math.max(0, Math.round(patch.notificationCooldown)));
+  }
+  return out;
+}
+
+function loadConfig() {
+  try {
+    if (!fs.existsSync(CONFIG_PATH)) return { ...DEFAULT_CONFIG };
+    const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    // Merge: defaults first, then saved values (only known keys survive via sanitizeConfig)
+    const merged = { ...DEFAULT_CONFIG, ...sanitizeConfig(parsed) };
+    return merged;
+  } catch (e) {
+    // Corrupt config: fall back to defaults, do not crash app
+    console.error('[loadConfig] error:', e.message);
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+function saveConfig(patch) {
+  const clean = sanitizeConfig(patch);
+  if (Object.keys(clean).length === 0) {
+    return { ok: false, error: '没有可保存的有效字段' };
+  }
+  const current = loadConfig();
+  const next = { ...current, ...clean };
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    return { ok: true, config: next };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 // Append one sample to the active recording. Called from the periodic collector.
 // Cheap: writes a single line (~1KB) every interval. fs.createWriteStream buffers.
 function appendRecordingSample(timestamp, processes, systemInfo) {
@@ -457,6 +521,21 @@ ipcMain.handle('list-recordings', () => listRecordings());
 ipcMain.handle('delete-recording', (_e, id) => deleteRecording(id));
 ipcMain.handle('export-recording-csv', async (_e, id) => {
   return await exportRecordingCsv(id);
+});
+
+// ============== Config IPC ==============
+// Renderer reads config on startup (so thresholds apply immediately) and writes
+// when user changes a setting. saveConfig merges with existing values, so partial
+// updates are safe.
+ipcMain.handle('get-config', () => loadConfig());
+ipcMain.handle('set-config', (_e, patch) => saveConfig(patch));
+ipcMain.handle('reset-config', () => {
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', 'utf8');
+    return { ok: true, config: { ...DEFAULT_CONFIG } };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 
 // Ensure an in-flight recording is flushed before app exit.

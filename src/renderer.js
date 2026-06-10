@@ -28,6 +28,13 @@ const els = {
   chartProcess: $('chartProcess'),
   recTopN: $('recTopN'),
   recInterval: $('recInterval'),
+  cfgSpikeThreshold: $('cfgSpikeThreshold'),
+  cfgLeakThreshold: $('cfgLeakThreshold'),
+  cfgRecordingTopN: $('cfgRecordingTopN'),
+  cfgSave: $('cfgSave'),
+  cfgReset: $('cfgReset'),
+  cfgStatus: $('cfgStatus'),
+  leakThresholdHint: $('leakThresholdHint'),
   recDuration: $('recDuration'),
   recStart: $('recStart'),
   recStop: $('recStop'),
@@ -447,9 +454,10 @@ function renderDashCharts() {
   }
 }
 
-// Spike detection: surface processes whose current memory deviates >=50% from their
-// running baseline. Sample count must be > 5 to establish a meaningful baseline.
-const SPIKE_THRESHOLD = 50;
+// Spike detection: surface processes whose current memory deviates >= configured
+// threshold from their running baseline. Threshold is loaded from user config.
+// Sample count must be > 5 to establish a meaningful baseline.
+let SPIKE_THRESHOLD = 50;        // mutated by applyConfig()
 
 function renderSpikes() {
   const spikes = [];
@@ -490,8 +498,9 @@ function renderSpikes() {
 }
 
 // Leak detection: a process with a sustained upward trend over the sample window.
-// Threshold: leakPercent >= 30 (i.e., memory growing at >=30% of baseline per window).
-const LEAK_THRESHOLD = 30;
+// Threshold: leakPercent >= configured value (i.e., memory growing at >= threshold
+// of baseline per window). Default 30, loaded from user config.
+let LEAK_THRESHOLD = 30;         // mutated by applyConfig()
 
 function renderLeaks() {
   const leaks = [];
@@ -901,6 +910,69 @@ window.electronAPI.getRecordingStatus().then(status => {
     updateRecStatus();
   }
 });
+
+// ============== Config loading ==============
+// Load user config (thresholds, recording defaults) on startup and apply.
+// Settings card on dashboard lets the user override; changes save immediately.
+let currentConfig = null;
+
+async function loadConfig() {
+  currentConfig = await window.electronAPI.getConfig();
+  applyConfig(currentConfig);
+}
+
+function applyConfig(cfg) {
+  SPIKE_THRESHOLD = cfg.spikeThreshold;
+  LEAK_THRESHOLD = cfg.leakThreshold;
+  // Sync inputs
+  if (els.cfgSpikeThreshold) els.cfgSpikeThreshold.value = cfg.spikeThreshold;
+  if (els.cfgLeakThreshold) els.cfgLeakThreshold.value = cfg.leakThreshold;
+  if (els.cfgRecordingTopN) els.cfgRecordingTopN.value = cfg.recordingTopN;
+  // Update hint on leak card
+  if (els.leakThresholdHint) els.leakThresholdHint.textContent = cfg.leakThreshold;
+  // Sync recording defaults into the recording tab inputs
+  if (els.recTopN) els.recTopN.value = cfg.recordingTopN;
+  if (els.recInterval) els.recInterval.value = cfg.recordingInterval;
+  // Re-render so thresholds take effect immediately
+  renderSpikes();
+  renderLeaks();
+}
+
+async function saveConfigFromUI() {
+  const patch = {
+    spikeThreshold: Number(els.cfgSpikeThreshold.value),
+    leakThreshold: Number(els.cfgLeakThreshold.value),
+    recordingTopN: Number(els.cfgRecordingTopN.value),
+  };
+  const result = await window.electronAPI.setConfig(patch);
+  if (result.ok) {
+    applyConfig(result.config);
+    els.cfgStatus.textContent = '已保存 ✓';
+    setTimeout(() => { els.cfgStatus.textContent = ''; }, 2000);
+    showToast('设置已保存', 'info');
+  } else {
+    els.cfgStatus.textContent = '保存失败';
+    els.cfgStatus.style.color = '#ff4d4f';
+    showToast('保存失败: ' + result.error, 'error');
+  }
+}
+
+async function resetConfig() {
+  const result = await window.electronAPI.resetConfig();
+  if (result.ok) {
+    applyConfig(result.config);
+    els.cfgStatus.textContent = '已恢复默认 ✓';
+    setTimeout(() => { els.cfgStatus.textContent = ''; }, 2000);
+    showToast('已恢复默认设置', 'info');
+  }
+}
+
+els.cfgSave.addEventListener('click', saveConfigFromUI);
+els.cfgReset.addEventListener('click', resetConfig);
+
+// Load config on startup (non-blocking - settings card works with defaults if it fails)
+loadConfig().catch(err => console.error('config load failed:', err));
+
 els.filterApply.addEventListener('click', applyFilter);
 els.filterClear.addEventListener('click', clearFilter);
 els.ruleAdd.addEventListener('click', addRule);

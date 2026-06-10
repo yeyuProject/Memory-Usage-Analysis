@@ -147,7 +147,8 @@ const LEAK_THRESHOLD = 30;
     assert(html.includes('疑似内存泄漏'), 'missing leak card title');
   });
   await test('HTML 提示阈值说明', () => {
-    assert(html.includes('30%'), 'missing threshold hint in HTML');
+    // Threshold is now in a span that's populated from config; verify hint structure
+    assert(html.includes('leakThresholdHint'), 'missing threshold hint span');
   });
 
   // ============ Renderer code (4 cases) ============
