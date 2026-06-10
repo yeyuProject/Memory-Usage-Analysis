@@ -31,6 +31,7 @@ let isCollecting = false;
 const MAX_SAMPLES = 60;            // history window length (samples)
 const COLLECT_INTERVAL_MS = 2000;  // collector tick interval; matches renderer REFRESH_INTERVAL_MS
 const HISTORY_WINDOW_MS = MAX_SAMPLES * COLLECT_INTERVAL_MS;
+const USER_CANCELED = '用户取消';
 
 // ===== Memory estimation ratios (must match renderer constants) =====
 const MEM_RATIOS = {
@@ -273,7 +274,7 @@ ipcMain.handle('export-history-snapshot', async (_e, opts) => {
     defaultPath: defaultName + '.' + format,
     filters,
   });
-  if (canceled || !filePath) return { ok: false, error: '用户取消' };
+  if (canceled || !filePath) return { ok: false, error: USER_CANCELED };
 
   const rows = [];
   for (const p of processCache) {

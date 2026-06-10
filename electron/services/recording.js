@@ -23,6 +23,7 @@ const { app, dialog } = require('electron');
 
 const TOP_N_DEFAULT = 20;
 const JSONL_EXT = '.jsonl';
+const USER_CANCELED = '用户取消';
 
 let recordingState = null;   // { id, startTime, interval, filePath, stream, sampleCount }
 
@@ -222,7 +223,7 @@ async function exportCsv(id, parentWindow) {
     defaultPath: id + '.csv',
     filters: [{ name: 'CSV', extensions: ['csv'] }],
   });
-  if (canceled || !outPath) return { ok: false, error: '用户取消' };
+  if (canceled || !outPath) return { ok: false, error: USER_CANCELED };
   try {
     const lines = fs.readFileSync(filePath, 'utf8').split('\n');
     const header = JSON.parse(lines[0]).header || {};
