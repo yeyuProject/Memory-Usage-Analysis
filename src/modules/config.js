@@ -6,7 +6,7 @@
 const state = require('./state');
 const { el, showToast, setTransientText } = require('./utils');
 const processTable = require('./process-table');
-const { latencyColor } = require('./theme');
+const { latencyColor, COLORS } = require('./theme');
 
 const REFRESH_INTERVAL_MS = 2000;
 
@@ -60,7 +60,7 @@ async function saveConfigFromUI() {
     const status = el('cfgStatus');
     if (status) {
       status.textContent = '保存失败';
-      status.style.color = '#ff4d4f';
+      status.style.color = COLORS.DANGER;
     }
     showToast('保存失败: ' + result.error, 'error');
   }

@@ -7,6 +7,11 @@
 const path = require('path');
 const { BrowserWindow } = require('electron');
 
+// Background color of the window before src/index.html finishes loading.
+// MUST match the body background rule in src/styles.css (#f0f2f5) to
+// avoid a flash of the wrong color on cold start.
+const WINDOW_BG = '#f0f2f5';
+
 let mainWindow = null;
 
 /**
@@ -22,7 +27,7 @@ function create() {
     minWidth: 800,
     minHeight: 600,
     title: 'Memory Usage Analysis',
-    backgroundColor: '#f0f2f5',
+    backgroundColor: WINDOW_BG,
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.cjs'),
       nodeIntegration: false,
