@@ -1,5 +1,11 @@
 # Memory Usage Analysis
 
+[中文](#简体中文) · [English](#english)
+
+---
+
+# 简体中文
+
 Windows 进程内存实时监控 / 突变检测 / 泄漏检测 / 数据录制 / 报告导出的桌面工具。
 
 基于 **Electron + 原生 JS + Canvas**，无 React/Vite/Antd 重型框架依赖，体积小、启动快、低资源占用。
@@ -103,3 +109,112 @@ npm run bench:powershell          # 性能基准
 ## 许可
 
 MIT
+
+---
+
+# English
+
+A Windows desktop tool for real-time process memory monitoring, spike / leak detection, persistent recording, and report export.
+
+Built on **Electron + vanilla JS + Canvas** — no heavy framework dependencies (no React / Vite / Antd), so the bundle stays small, startup stays fast, and resource usage stays low.
+
+## Features
+
+- **Real-time monitoring** — 2-second polling against the PowerShell backend, Top-N processes + system memory
+- **Spike detection** — sliding-window baseline + peak tracking for short-lived memory spikes
+- **Leak detection** — least-squares linear regression for slow, long-running memory growth
+- **Data recording** — persistent JSONL (~1.4 MB/h), with CSV export
+- **History snapshots** — one-click export of all processes to CSV / JSON for offline analysis
+- **Configurable** — thresholds, Top N, sampling interval all adjustable
+- **Chinese UI** — process names, labels, and notifications all in 中文
+
+## Quick Start
+
+```bash
+npm install
+npm start               # launch the desktop app
+npm test                # run all 13 test suites
+npm run test:theme      # run a single test suite
+npm run bench:powershell  # PowerShell REPL performance benchmark
+npm run dist            # package as Windows installer / portable build
+```
+
+Requires Windows 10 / 11 + PowerShell (built-in).
+
+## Project Structure
+
+```
+.
+├── src/                  # Renderer process (vanilla JS + Canvas)
+│   ├── index.html
+│   ├── renderer.js       # Thin orchestrator
+│   ├── styles.css
+│   └── modules/          # Domain modules (state / charts / search / process-table / ...)
+├── electron/             # Main process
+│   ├── main.cjs          # Thin orchestrator
+│   ├── preload.cjs
+│   └── services/         # Main-process services (ps-session / recording / config / window / csv)
+├── tests/                # All tests (13 suites + 2 benchmarks + shared framework)
+│   ├── unit/             # Unit / integration test suites
+│   ├── bench/            # Performance benchmarks
+│   ├── integration/      # End-to-end integration tests
+│   ├── fixtures/         # Shared mock data
+│   ├── scripts/          # One-off migration scripts
+│   └── run-all.cjs       # Test runner entry point
+├── ARCHITECTURE.md       # Detailed architecture document
+├── package.json
+└── README.md
+```
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full design.
+
+## Architecture Highlights
+
+- **PowerShell REPL** — One long-lived `powershell.exe` per session, communicating via a REPL protocol (`COLLECT\n` → JSON → `READY\n`). Compared to spawning a new powershell.exe per tick, this is a **4.8x speedup** (cold 359 ms → warm 75 ms).
+- **Long-session PowerShell** — A single process handles multiple queued requests, preventing JSON-response interleaving.
+- **No frontend framework** — Dropping React / Vite / Antd / Recharts dramatically reduced memory usage and crash rate.
+- **Modular renderer process** — The 1326-line monolith was split into 9 modules with clear responsibilities.
+
+## Testing
+
+```bash
+npm test                          # 13 / 13 suites
+npm run test:spike                # individual suite
+npm run bench:powershell          # performance benchmark
+```
+
+Test coverage:
+- Spike detection (boundary conditions, baseline window, hot / warm / cool classification)
+- Leak detection (least-squares regression, empty samples, noisy data)
+- Search (substring, fuzzy, PID match, cache hits)
+- Recording (start / stop, Top-N, JSONL writes, file rotation)
+- Config (persistence, migration, defaults)
+- Snapshot export (CSV / JSON formats, field completeness)
+- Context menu (search / copy / open location / kill)
+- Status bar (collection latency, PS liveness, Top N summary)
+- Theme module (latencyColor / loadColor boundary)
+- Post-refactor module structure (JSDoc coverage, file locations)
+
+## Configuration
+
+On first launch the app creates a default config in `userData/config.json`. Fields:
+
+| Field | Default | Description |
+|---|---|---|
+| `spikeThreshold` | 50 | Spike percentage threshold (within baseline window) |
+| `leakThreshold` | 30 | Leak percentage threshold (linear-regression slope) |
+| `recordingTopN` | 20 | Top-N processes retained per recording sample |
+| `recordingInterval` | 2000 | Recording sample interval (ms, min 1000) |
+| `notificationCooldown` | 60 | Per-process notification cooldown (seconds) |
+
+## Performance Numbers
+
+- **PowerShell REPL**: 4.8x speedup (cold start 359 ms → warm 75 ms)
+- **Per-tick rendering**: 0.432 ms → 0.207 ms (52% reduction)
+- **Recording file size**: Top20 @ 5 s ≈ 1.4 MB / h
+- **Test suites**: 13 suites, 391+ test cases, all green
+
+## License
+
+MIT
+
