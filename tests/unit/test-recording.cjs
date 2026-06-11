@@ -428,7 +428,7 @@ const TMP = path.join(os.tmpdir(), 'mua-rec-test-' + Date.now());
 
   // ============ Source-level (3) ============
   console.log('\n-- 源码检查 --');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('main.cjs 包含 start-recording IPC', () => {
     assert(/ipcMain\.handle\(['"]start-recording['"]/.test(main));
   });
@@ -447,7 +447,7 @@ const TMP = path.join(os.tmpdir(), 'mua-rec-test-' + Date.now());
   await test('main.cjs 在 collectData 中调用 appendRecordingSample', () => {
     assert(/appendRecordingSample\(/.test(main));
   });
-  const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
   await test('preload 暴露 5 个 recording API', () => {
     assert(/startRecording:/.test(preload));
     assert(/stopRecording:/.test(preload));
@@ -455,7 +455,7 @@ const TMP = path.join(os.tmpdir(), 'mua-rec-test-' + Date.now());
     assert(/deleteRecording:/.test(preload));
     assert(/exportRecordingCsv:/.test(preload));
   });
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('HTML 包含 recTopN 输入', () => {
     assert(/id="recTopN"/.test(html));
   });
@@ -463,7 +463,7 @@ const TMP = path.join(os.tmpdir(), 'mua-rec-test-' + Date.now());
     const m = html.match(/id="recInterval"[^>]*value="(\d+)"/);
     assert(m && m[1] === '2000', 'expected default 2000ms, got ' + (m && m[1]));
   });
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 调用 window.electronAPI.startRecording', () => {
     assert(/window\.electronAPI\.startRecording/.test(renderer));
   });
@@ -486,15 +486,15 @@ const TMP = path.join(os.tmpdir(), 'mua-rec-test-' + Date.now());
   console.log('\n-- 语法检查 --');
   await test('main.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/main.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/main.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('preload.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/preload.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/preload.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

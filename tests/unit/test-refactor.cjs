@@ -22,7 +22,7 @@ function renderSpikeCell(spike, sampleCount) {
 }
 
 function readFile(rel) {
-  return fs.readFileSync(path.join(__dirname, rel), 'utf8');
+  return fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
 }
 
 // Read all files we'll be asserting against up front
@@ -185,13 +185,13 @@ const mainCjs = readFile('electron/main.cjs');
   await test('src/modules/ 包含9个模块 (state/utils/charts/search/process-table/recordings/notifications/export/config)', () => {
     const expected = ['state.js', 'utils.js', 'charts.js', 'search.js', 'process-table.js', 'recordings.js', 'notifications.js', 'export.js', 'config.js'];
     for (const f of expected) {
-      assert(fs.existsSync(path.join(__dirname, 'src', 'modules', f)), `missing module: ${f}`);
+      assert(fs.existsSync(path.join(__dirname, '..', '..', 'src', 'modules', f)), `missing module: ${f}`);
     }
   });
   await test('electron/services/ 包含4个服务 (config/ps-session/recording/window)', () => {
     const expected = ['config.js', 'ps-session.js', 'recording.js', 'window.js'];
     for (const f of expected) {
-      assert(fs.existsSync(path.join(__dirname, 'electron', 'services', f)), `missing service: ${f}`);
+      assert(fs.existsSync(path.join(__dirname, '..', '..', 'electron', 'services', f)), `missing service: ${f}`);
     }
   });
   await test('main.cjs 已变编排器 (<400 lines, 仅IPC+collectData+lifecycle)', () => {
@@ -203,15 +203,15 @@ const mainCjs = readFile('electron/main.cjs');
   console.log('\n-- 语法检查 --');
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('process-table.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/modules/process-table.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/modules/process-table.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('main.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/main.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/main.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

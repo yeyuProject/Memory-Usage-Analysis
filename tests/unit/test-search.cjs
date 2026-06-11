@@ -193,7 +193,7 @@ function makeProcs(n) {
 
   // ============ Source-level checks (7) ============
   console.log('\n-- 源码检查 --');
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('HTML 包含 searchClear 按钮', () => {
     assert(/id="searchClear"/.test(html));
   });
@@ -203,14 +203,14 @@ function makeProcs(n) {
   await test('HTML 搜索框 placeholder 包含 Ctrl+F 提示', () => {
     assert(/Ctrl\+F/.test(html), 'should mention Ctrl+F shortcut in placeholder');
   });
-  const css = fs.readFileSync(path.join(__dirname, 'src', 'styles.css'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'styles.css'), 'utf8');
   await test('CSS 包含 .search-clear 样式', () => {
     assert(/\.search-clear\s*\{/.test(css));
   });
   await test('CSS 包含 mark.search-hl 高亮样式', () => {
     assert(/mark\.search-hl\s*\{/.test(css));
   });
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 包含 searchClear 元素引用', () => {
     assert(/searchClear:\s*\$\(['"]searchClear['"]\)/.test(renderer));
   });
@@ -244,7 +244,7 @@ function makeProcs(n) {
   console.log('\n-- 语法检查 --');
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

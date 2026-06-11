@@ -7,7 +7,7 @@
 // against regressions in the boundary conditions.
 
 const { test, assert, assertEq, passed, failed } = require('./test-helpers.cjs');
-const { COLORS, latencyColor, loadColor, LATENCY_GREEN_MS, LATENCY_ORANGE_MS } = require('./src/modules/theme.js');
+const { COLORS, latencyColor, loadColor, LATENCY_GREEN_MS, LATENCY_ORANGE_MS } = require('../../src/modules/theme.js');
 
 console.log('\n=== test-theme ===\n');
 

@@ -8,7 +8,7 @@ const { test, assert, assertEq, passed, failed, results } = require('./test-help
 (async () => {
   // === Test 1: Renderer code contains context menu logic ===
   console.log('[Test 1] Renderer 包含右键菜单逻辑');
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
 
   await test('1.1 - showContextMenu 函数存在', () => {
     assert(renderer.includes('function showContextMenu'), 'missing function');
@@ -43,7 +43,7 @@ const { test, assert, assertEq, passed, failed, results } = require('./test-help
 
   // === Test 3: HTML has ctxMenu element ===
   console.log('\n[Test 3] HTML 包含 ctxMenu 元素');
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('3.1 - HTML 含 ctxMenu div', () => {
     assert(html.includes('id="ctxMenu"'), 'missing ctxMenu element');
   });
@@ -53,7 +53,7 @@ const { test, assert, assertEq, passed, failed, results } = require('./test-help
 
   // === Test 4: CSS has styles ===
   console.log('\n[Test 4] CSS 包含菜单样式');
-  const css = fs.readFileSync(path.join(__dirname, 'src', 'styles.css'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'styles.css'), 'utf8');
   await test('4.1 - .ctx-menu 样式存在', () => {
     assert(css.includes('.ctx-menu'), 'missing .ctx-menu');
   });
@@ -69,7 +69,7 @@ const { test, assert, assertEq, passed, failed, results } = require('./test-help
 
   // === Test 5: Main process IPC handlers ===
   console.log('\n[Test 5] 主进程 IPC handlers');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('5.1 - kill-process handler', () => {
     assert(main.includes("'kill-process'"), 'missing kill-process');
     assert(main.includes('taskkill'), 'missing taskkill');
@@ -90,7 +90,7 @@ const { test, assert, assertEq, passed, failed, results } = require('./test-help
 
   // === Test 6: Preload exposes new methods ===
   console.log('\n[Test 6] Preload 暴露新 IPC');
-  const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
   await test('6.1 - killProcess 暴露', () => {
     assert(preload.includes('killProcess:'), 'missing killProcess');
   });

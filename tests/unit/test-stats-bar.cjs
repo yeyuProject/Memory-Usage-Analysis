@@ -108,7 +108,7 @@ function renderStats(stats) {
 
   // ============ Source-level checks (6) ============
   console.log('\n-- 源码检查 --');
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('HTML 包含 collectorStats 元素', () => {
     assert(/id="collectorStats"/.test(html));
   });
@@ -117,7 +117,7 @@ function renderStats(stats) {
     assert(footerMatch, 'footer not found');
     assert(/id="collectorStats"/.test(footerMatch[0]), 'collectorStats should be inside footer');
   });
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 包含 collectorStats 元素引用', () => {
     assert(/collectorStats:\s*\$\(['"]collectorStats['"]\)/.test(renderer));
   });
@@ -137,11 +137,11 @@ function renderStats(stats) {
     assert(/d\s*<\s*500/.test(renderer), 'should have < 500ms threshold');
   });
   await test('main.cjs 暴露 get-collector-stats IPC', () => {
-    const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+    const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
     assert(/ipcMain\.handle\(['"]get-collector-stats['"]/.test(main));
   });
   await test('preload 暴露 getCollectorStats', () => {
-    const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+    const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
     assert(/getCollectorStats:/.test(preload));
   });
 
@@ -149,7 +149,7 @@ function renderStats(stats) {
   console.log('\n-- 语法检查 --');
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

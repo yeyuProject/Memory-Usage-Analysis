@@ -239,7 +239,7 @@ const TMP = path.join(os.tmpdir(), 'mua-config-test-' + Date.now());
 
   // ============ Source-level checks (5) ============
   console.log('\n-- 源码检查 --');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('main.cjs 包含 DEFAULT_CONFIG', () => {
     assert(/const DEFAULT_CONFIG\s*=/.test(main));
   });
@@ -255,13 +255,13 @@ const TMP = path.join(os.tmpdir(), 'mua-config-test-' + Date.now());
   await test('main.cjs 包含 reset-config IPC', () => {
     assert(/ipcMain\.handle\(['"]reset-config['"]/.test(main));
   });
-  const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
   await test('preload 暴露 3 个 config API', () => {
     assert(/getConfig:/.test(preload));
     assert(/setConfig:/.test(preload));
     assert(/resetConfig:/.test(preload));
   });
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('HTML 包含 cfgSpikeThreshold 输入', () => {
     assert(/id="cfgSpikeThreshold"/.test(html));
   });
@@ -274,7 +274,7 @@ const TMP = path.join(os.tmpdir(), 'mua-config-test-' + Date.now());
   await test('HTML 包含 cfgReset 按钮', () => {
     assert(/id="cfgReset"/.test(html));
   });
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 不再有 const SPIKE_THRESHOLD (改为 let)', () => {
     // After refactor: SPIKE_THRESHOLD_DEFAULT exists as const (default value),
     // but the mutable binding is let.
@@ -314,15 +314,15 @@ const TMP = path.join(os.tmpdir(), 'mua-config-test-' + Date.now());
   console.log('\n-- 语法检查 --');
   await test('main.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/main.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/main.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('preload.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/preload.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/preload.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

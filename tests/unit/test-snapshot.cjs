@@ -362,7 +362,7 @@ const TMP = path.join(os.tmpdir(), 'mua-snapshot-test-' + Date.now());
 
   // ============ Source-level checks (5) ============
   console.log('\n-- 源码检查 --');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('main.cjs 包含 export-history-snapshot IPC', () => {
     assert(/ipcMain\.handle\(['"]export-history-snapshot['"]/.test(main));
   });
@@ -380,18 +380,18 @@ const TMP = path.join(os.tmpdir(), 'mua-snapshot-test-' + Date.now());
     assert(/spikePercent/.test(block), 'spikePercent missing from snapshot handler');
     assert(/leakPercent/.test(block), 'leakPercent missing from snapshot handler');
   });
-  const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
   await test('preload 暴露 exportHistorySnapshot', () => {
     assert(/exportHistorySnapshot:/.test(preload));
   });
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('HTML 包含 snapshotBtn', () => {
     assert(/id="snapshotBtn"/.test(html));
   });
   await test('HTML 包含 "导出历史快照" 文本', () => {
     assert(html.includes('导出历史快照'));
   });
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 包含 exportHistorySnapshot 函数', () => {
     assert(/async function exportHistorySnapshot/.test(renderer));
   });
@@ -406,15 +406,15 @@ const TMP = path.join(os.tmpdir(), 'mua-snapshot-test-' + Date.now());
   console.log('\n-- 语法检查 --');
   await test('main.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/main.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/main.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('preload.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/preload.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/preload.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

@@ -170,7 +170,7 @@ const procs = [
 
   // ============ Source-level checks (4) ============
   console.log('\n-- 源码检查 --');
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 包含 compileSearchMatcher 函数', () => {
     assert(/function\s+compileSearchMatcher\s*\(/.test(renderer));
   });
@@ -190,7 +190,7 @@ const procs = [
   console.log('\n-- 语法检查 --');
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

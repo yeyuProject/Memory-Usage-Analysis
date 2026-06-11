@@ -52,7 +52,7 @@ class HistoryTracker {
 (async () => {
   // === Test 1: Main process has history tracking ===
   console.log('[Test 1] Main process 历史跟踪');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('1.1 - processHistory Map 定义', () => {
     assert(main.includes('processHistory = new Map'), 'no history map');
   });
@@ -78,14 +78,14 @@ class HistoryTracker {
 
   // === Test 2: Preload exposes getProcessHistory ===
   console.log('\n[Test 2] Preload 暴露');
-  const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
   await test('2.1 - getProcessHistory 暴露', () => {
     assert(preload.includes('getProcessHistory:'), 'missing in preload');
   });
 
   // === Test 3: HTML has spike column ===
   console.log('\n[Test 3] HTML 突变列');
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('3.1 - 表格含 突变% 列头', () => {
     assert(html.includes('data-sort="spike"'), 'missing spike sort header');
     assert(html.includes('突变%'), 'missing 突变% text');
@@ -100,7 +100,7 @@ class HistoryTracker {
 
   // === Test 4: Renderer logic ===
   console.log('\n[Test 4] Renderer 逻辑');
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('4.1 - processHistory state 声明', () => {
     assert(renderer.includes('let processHistory = {}'), 'missing state');
   });

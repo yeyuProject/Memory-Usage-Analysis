@@ -1,7 +1,7 @@
 // Run all test suites and report a combined pass/fail summary.
 // Exits 0 only if every suite passes. Use in CI.
 //
-// Usage: node test/run-all.cjs
+// Usage: node tests/run-all.cjs
 //   or:  npm test
 
 const { execFileSync } = require('child_process');
@@ -30,7 +30,7 @@ let failed = 0;
 const failures = [];
 
 for (const suite of SUITES) {
-  const path_ = path.join(__dirname, '..', suite);
+  const path_ = path.join(__dirname, 'unit', suite);
   if (!fs.existsSync(path_)) {
     console.log(`  [SKIP] ${suite} (not found)`);
     continue;
@@ -38,7 +38,7 @@ for (const suite of SUITES) {
   totalSuites++;
   process.stdout.write(`  ${suite} ... `);
   try {
-    execFileSync('node', [path_], { stdio: 'pipe', cwd: path.join(__dirname, '..') });
+    execFileSync('node', [path_], { stdio: 'pipe', cwd: path.join(__dirname, '..', '..') });
     process.stdout.write('OK\n');
     passed++;
   } catch (e) {

@@ -116,7 +116,7 @@ const LEAK_THRESHOLD = 30;
 
   // ============ HTML structure (3 cases) ============
   console.log('\n-- HTML 结构 --');
-  const html = fs.readFileSync(path.join(__dirname, 'src', 'index.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'index.html'), 'utf8');
   await test('HTML 包含 leakTbody', () => {
     assert(html.includes('id="leakTbody"'), 'missing leakTbody id');
   });
@@ -130,7 +130,7 @@ const LEAK_THRESHOLD = 30;
 
   // ============ Renderer code (4 cases) ============
   console.log('\n-- 渲染器代码 --');
-  const renderer = fs.readFileSync(path.join(__dirname, 'src', 'renderer.js'), 'utf8');
+  const renderer = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer.js'), 'utf8');
   await test('renderer 包含 renderLeaks 函数', () => {
     assert(/function\s+renderLeaks\s*\(/.test(renderer), 'renderLeaks not defined');
   });
@@ -147,7 +147,7 @@ const LEAK_THRESHOLD = 30;
 
   // ============ Main process IPC (3 cases) ============
   console.log('\n-- 主进程 IPC --');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('main.cjs 包含 computeLeakPercent 函数', () => {
     assert(/function\s+computeLeakPercent\s*\(/.test(main), 'computeLeakPercent not in main.cjs');
   });
@@ -169,15 +169,15 @@ const LEAK_THRESHOLD = 30;
   console.log('\n-- 语法检查 --');
   await test('main.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/main.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/main.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('renderer.js 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c src/renderer.js', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c src/renderer.js', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('preload.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/preload.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/preload.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============

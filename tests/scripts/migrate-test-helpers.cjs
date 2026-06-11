@@ -1,9 +1,12 @@
 // One-off migration script: replace local test/assert/assertEq declarations
 // in all test-*.cjs files with a single require('./test-helpers.cjs').
-// Run from project root: node migrate-test-helpers.cjs
+// Targets files in tests/unit/. Run from project root:
+//   node tests/scripts/migrate-test-helpers.cjs
 
 const fs = require('fs');
 const path = require('path');
+
+const TEST_DIR = path.join(__dirname, '..', 'unit');
 
 const TEST_FILES = [
   'test-config.cjs',
@@ -27,7 +30,7 @@ const PRELUDE_RE = /let passed = 0, failed = 0;\nconst results = \[\];\n\nfuncti
 let migrated = 0;
 let skipped = 0;
 for (const f of TEST_FILES) {
-  const path_ = path.join(__dirname, f);
+  const path_ = path.join(TEST_DIR, f);
   if (!fs.existsSync(path_)) { skipped++; continue; }
   let src = fs.readFileSync(path_, 'utf8');
   if (src.includes("require('./test-helpers.cjs')")) { skipped++; continue; }

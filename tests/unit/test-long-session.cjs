@@ -318,7 +318,7 @@ function request(session) {
 
   // ============ Source-level checks (8) ============
   console.log('\n-- 源码检查 --');
-  const main = fs.readFileSync(path.join(__dirname, 'electron', 'main.cjs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'main.cjs'), 'utf8');
   await test('main.cjs 包含 PS_READY 哨兵常量', () => {
     assert(/const PS_READY\s*=\s*['"]READY['"]/.test(main));
   });
@@ -374,16 +374,16 @@ function request(session) {
   await test('main.cjs 暴露 get-collector-stats IPC', () => {
     assert(/ipcMain\.handle\(['"]get-collector-stats['"]/.test(main));
   });
-  const preload = fs.readFileSync(path.join(__dirname, 'electron', 'preload.cjs'), 'utf8');
+  const preload = fs.readFileSync(path.join(__dirname, '..', '..', 'electron', 'preload.cjs'), 'utf8');
   await test('preload 暴露 getCollectorStats', () => {
     assert(/getCollectorStats:/.test(preload));
   });
 
   // ============ Bench file present ============
   await test('bench-powershell.cjs 存在', () => {
-    assert(fs.existsSync(path.join(__dirname, 'bench-powershell.cjs')));
+    assert(fs.existsSync(path.join(__dirname, '..', '..', 'tests', 'bench', 'bench-powershell.cjs')));
   });
-  const bench = fs.readFileSync(path.join(__dirname, 'bench-powershell.cjs'), 'utf8');
+  const bench = fs.readFileSync(path.join(__dirname, '..', '..', 'tests', 'bench', 'bench-powershell.cjs'), 'utf8');
   await test('bench 使用真实的 REPL_SCRIPT', () => {
     assert(/REPL_SCRIPT\s*=/.test(bench));
     assert(/'READY'/.test(bench));
@@ -397,15 +397,15 @@ function request(session) {
   console.log('\n-- 语法检查 --');
   await test('main.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/main.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/main.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('preload.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c electron/preload.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c electron/preload.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
   await test('bench-powershell.cjs 语法正确', () => {
     const { execSync } = require('child_process');
-    execSync('node -c bench-powershell.cjs', { cwd: __dirname, stdio: 'pipe' });
+    execSync('node -c bench-powershell.cjs', { cwd: path.join(__dirname, '..', '..'), stdio: 'pipe' });
   });
 
   // ============ Report ============
